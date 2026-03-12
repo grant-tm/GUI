@@ -33,6 +33,14 @@ static Vec2 GUI_GetTextPosition (Rect2 rect, Vec2 padding, f32 text_size)
     return Vec2_Create(rect.min.x + padding.x, rect.min.y + padding.y + (text_size * 0.75f));
 }
 
+static Vec2 GUI_GetTextPositionCenteredY (Rect2 rect, f32 text_size)
+{
+    f32 text_top;
+
+    text_top = rect.min.y + ((rect.max.y - rect.min.y - text_size) * 0.5f);
+    return Vec2_Create(rect.min.x, text_top + (text_size * 0.75f));
+}
+
 static usize GUI_GetCaretIndexFromPosition (const GUIContext *context, Rect2 rect, Vec2 padding, String text, f32 text_size, f32 mouse_x)
 {
     usize index;
@@ -395,6 +403,83 @@ GUIScrollRegionStyle GUIScrollRegionStyle_Default (void)
     return style;
 }
 
+f32 GUI_MeasureLabelWidth (const GUIContext *context, String text, const GUILabelStyle *style)
+{
+    const GUILabelStyle *resolved_style;
+
+    ASSERT(context != NULL);
+    resolved_style = (style != NULL) ? style : GUI_GetLabelStyle(context);
+
+    return GUI_MeasureTextWidth(context, text, resolved_style->text_size);
+}
+
+f32 GUI_MeasureMaxLabelWidth (const GUIContext *context, const String *texts, usize text_count, const GUILabelStyle *style)
+{
+    usize text_index;
+    f32 max_width;
+
+    ASSERT(context != NULL);
+    ASSERT((texts != NULL) || (text_count == 0));
+
+    max_width = 0.0f;
+    for (text_index = 0; text_index < text_count; text_index += 1)
+    {
+        max_width = MAX(max_width, GUI_MeasureLabelWidth(context, texts[text_index], style));
+    }
+
+    return max_width;
+}
+
+Vec2 GUI_MeasureButtonSize (const GUIContext *context, String text, const GUIButtonStyle *style)
+{
+    const GUIButtonStyle *resolved_style;
+    f32 text_width;
+    f32 width;
+
+    ASSERT(context != NULL);
+    resolved_style = (style != NULL) ? style : GUI_GetButtonStyle(context);
+
+    text_width = GUI_MeasureTextWidth(context, text, resolved_style->text_size);
+    width = resolved_style->padding.x + text_width + resolved_style->padding.x;
+    return Vec2_Create(width, resolved_style->height);
+}
+
+void GUI_BeginFormRow (GUIContext *context, String label, f32 label_width, f32 height, f32 spacing, const GUILabelStyle *label_style)
+{
+    const GUILabelStyle *resolved_style;
+    Rect2 label_rect;
+    Vec2 label_position;
+    f32 resolved_label_width;
+
+    ASSERT(context != NULL);
+    ASSERT(height > 0.0f);
+    ASSERT(spacing >= 0.0f);
+
+    resolved_style = (label_style != NULL) ? label_style : GUI_GetLabelStyle(context);
+    resolved_label_width = (label_width > 0.0f) ? label_width : GUI_MeasureLabelWidth(context, label, resolved_style);
+
+    GUI_BeginRow(context, height, spacing);
+    label_rect = GUI_LayoutNextRect(context, Vec2_Create(resolved_label_width, 0.0f));
+    label_position = GUI_GetTextPositionCenteredY(label_rect, resolved_style->text_size);
+    GUI_DrawText(context, label_position, label, resolved_style->text_color, resolved_style->text_size);
+}
+
+void GUI_EndFormRow (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    GUI_EndRow(context);
+}
+
+void GUI_BeginPropertyRow (GUIContext *context, String label, f32 label_width, f32 height, f32 spacing, const GUILabelStyle *label_style)
+{
+    GUI_BeginFormRow(context, label, label_width, height, spacing, label_style);
+}
+
+void GUI_EndPropertyRow (GUIContext *context)
+{
+    GUI_EndFormRow(context);
+}
+
 GUITextFieldStyle GUITextFieldStyle_Default (void)
 {
     GUITextFieldStyle style;
@@ -740,6 +825,102 @@ b32 GUI_Button (GUIContext *context, GUIID id, String text, f32 width, const GUI
     text_position = GUI_GetTextPosition(rect, resolved_style->padding, resolved_style->text_size);
     GUI_DrawText(context, text_position, text, resolved_style->text_color, resolved_style->text_size);
     return clicked;
+}
+
+b32 GUI_ButtonAuto (GUIContext *context, GUIID id, String text, const GUIButtonStyle *style)
+{
+    Vec2 measured_size;
+
+    ASSERT(context != NULL);
+
+    measured_size = GUI_MeasureButtonSize(context, text, style);
+    return GUI_Button(context, id, text, measured_size.x, style);
+}
+
+b32 GUI_PropertyButton (GUIContext *context, GUIID id, String label, String text, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIButtonStyle *button_style)
+{
+    const GUIButtonStyle *resolved_button_style;
+    b32 clicked;
+
+    ASSERT(context != NULL);
+
+    resolved_button_style = (button_style != NULL) ? button_style : GUI_GetButtonStyle(context);
+    GUI_BeginPropertyRow(context, label, label_width, resolved_button_style->height, spacing, label_style);
+    clicked = GUI_Button(context, id, text, GUI_GetRemainingWidth(context), button_style);
+    GUI_EndPropertyRow(context);
+    return clicked;
+}
+
+b32 GUI_PropertyToggle (GUIContext *context, GUIID id, String label, b32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIToggleStyle *toggle_style)
+{
+    GUIToggleStyle default_style;
+    const GUIToggleStyle *resolved_toggle_style;
+    b32 changed;
+
+    ASSERT(context != NULL);
+
+    if (toggle_style == NULL)
+    {
+        default_style = GUIToggleStyle_Default();
+        resolved_toggle_style = &default_style;
+    }
+    else
+    {
+        resolved_toggle_style = toggle_style;
+    }
+
+    GUI_BeginPropertyRow(context, label, label_width, resolved_toggle_style->height, spacing, label_style);
+    changed = GUI_Toggle(context, id, String_Create(NULL, 0), value, toggle_style);
+    GUI_EndPropertyRow(context);
+    return changed;
+}
+
+b32 GUI_PropertySliderF32 (GUIContext *context, GUIID id, String label, f32 min_value, f32 max_value, f32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUISliderStyle *slider_style)
+{
+    GUISliderStyle default_style;
+    const GUISliderStyle *resolved_slider_style;
+    b32 changed;
+
+    ASSERT(context != NULL);
+
+    if (slider_style == NULL)
+    {
+        default_style = GUISliderStyle_Default();
+        resolved_slider_style = &default_style;
+    }
+    else
+    {
+        resolved_slider_style = slider_style;
+    }
+
+    GUI_BeginPropertyRow(context, label, label_width, resolved_slider_style->height, spacing, label_style);
+    changed = GUI_SliderF32(context, id, String_Create(NULL, 0), GUI_GetRemainingWidth(context), min_value, max_value, value, slider_style);
+    GUI_EndPropertyRow(context);
+    return changed;
+}
+
+b32 GUI_PropertyTextField (GUIContext *context, GUIID id, String label, c8 *buffer, usize capacity, usize *length, String placeholder, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUITextFieldStyle *text_field_style)
+{
+    GUITextFieldStyle default_style;
+    const GUITextFieldStyle *resolved_text_field_style;
+    b32 changed;
+
+    ASSERT(context != NULL);
+
+    if (text_field_style == NULL)
+    {
+        default_style = GUITextFieldStyle_Default();
+        resolved_text_field_style = &default_style;
+    }
+    else
+    {
+        resolved_text_field_style = text_field_style;
+    }
+
+    GUI_BeginPropertyRow(context, label, label_width, resolved_text_field_style->height, spacing, label_style);
+    changed = GUI_TextField(context, id, buffer, capacity, length, placeholder, text_field_style);
+    GUI_EndPropertyRow(context);
+    return changed;
 }
 
 b32 GUI_Toggle (GUIContext *context, GUIID id, String text, b32 *value, const GUIToggleStyle *style)

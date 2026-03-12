@@ -285,6 +285,9 @@ void GUI_EndLayout (GUIContext *context);
 void GUI_BeginRow (GUIContext *context, f32 height, f32 spacing);
 void GUI_EndRow (GUIContext *context);
 Rect2 GUI_LayoutNextRect (GUIContext *context, Vec2 size);
+f32 GUI_GetRemainingWidth (const GUIContext *context);
+f32 GUI_GetRemainingHeight (const GUIContext *context);
+Rect2 GUI_LayoutNextRemainingRect (GUIContext *context);
 void GUI_Spacer (GUIContext *context, f32 size);
 
 void GUI_PushClipRect (GUIContext *context, Rect2 rect);

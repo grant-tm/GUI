@@ -454,13 +454,50 @@ Rect2 GUI_LayoutNextRect (GUIContext *context, Vec2 size)
     }
     else
     {
-        ASSERT(size.x > 0.0f);
-        rect.max.x = rect.min.x + size.x;
+        rect.max.x = (size.x > 0.0f) ? (rect.min.x + size.x) : scope->content_rect.max.x;
         rect.max.y = (size.y > 0.0f) ? MIN(scope->content_rect.max.y, rect.min.y + size.y) : scope->content_rect.max.y;
         scope->cursor.x = rect.max.x + scope->spacing;
     }
 
     return rect;
+}
+
+f32 GUI_GetRemainingWidth (const GUIContext *context)
+{
+    const GUILayoutScope *scope;
+
+    ASSERT(context != NULL);
+    ASSERT(context->layout_stack_count > 0);
+
+    scope = context->layout_stack + (context->layout_stack_count - 1);
+    return MAX(0.0f, scope->content_rect.max.x - scope->cursor.x);
+}
+
+f32 GUI_GetRemainingHeight (const GUIContext *context)
+{
+    const GUILayoutScope *scope;
+
+    ASSERT(context != NULL);
+    ASSERT(context->layout_stack_count > 0);
+
+    scope = context->layout_stack + (context->layout_stack_count - 1);
+    return MAX(0.0f, scope->content_rect.max.y - scope->cursor.y);
+}
+
+Rect2 GUI_LayoutNextRemainingRect (GUIContext *context)
+{
+    const GUILayoutScope *scope;
+
+    ASSERT(context != NULL);
+    ASSERT(context->layout_stack_count > 0);
+
+    scope = context->layout_stack + (context->layout_stack_count - 1);
+    if (scope->axis == GUI_LAYOUT_AXIS_VERTICAL)
+    {
+        return GUI_LayoutNextRect(context, Vec2_Create(0.0f, GUI_GetRemainingHeight(context)));
+    }
+
+    return GUI_LayoutNextRect(context, Vec2_Create(GUI_GetRemainingWidth(context), 0.0f));
 }
 
 void GUI_BeginRow (GUIContext *context, f32 height, f32 spacing)
