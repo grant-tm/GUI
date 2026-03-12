@@ -61,12 +61,21 @@ typedef struct GUITextFieldStyle
     Vec4 text_color;
     Vec4 placeholder_color;
     Vec4 caret_color;
+    Vec4 selection_color;
     GUICornerRadii corner_radii;
     GUIEdgeThickness border_thickness;
     f32 text_size;
     f32 height;
     Vec2 padding;
 } GUITextFieldStyle;
+
+typedef struct GUITextMetrics
+{
+    Vec2 size;
+    f32 line_height;
+} GUITextMetrics;
+
+typedef GUITextMetrics GUITextMeasureFunction (String text, f32 size, void *user_data);
 
 typedef enum GUIDrawCommandType
 {
@@ -186,6 +195,8 @@ typedef struct GUIContext
     GUIID focused_id;
     usize text_field_caret;
     usize text_field_selection_anchor;
+    GUITextMeasureFunction *text_measure_function;
+    void *text_measure_user_data;
     GUIDrawCommandBuffer draw_commands;
     Rect2 *clip_stack;
     usize clip_stack_count;
@@ -210,6 +221,9 @@ void GUI_BeginFrame (GUIContext *context, const GUIFrameDesc *desc);
 void GUI_EndFrame (GUIContext *context);
 void GUI_SubmitPlatformInput (GUIContext *context, const PlatformEventBuffer *events, const PlatformInputState *input_state);
 const GUIDrawCommandBuffer *GUI_GetDrawCommands (const GUIContext *context);
+void GUI_SetTextMeasureFunction (GUIContext *context, GUITextMeasureFunction *function, void *user_data);
+GUITextMetrics GUI_MeasureText (const GUIContext *context, String text, f32 size);
+f32 GUI_MeasureTextWidth (const GUIContext *context, String text, f32 size);
 
 Vec4 GUIColor_Create (f32 r, f32 g, f32 b, f32 a);
 GUICornerRadii GUICornerRadii_Create (f32 top_left, f32 top_right, f32 bottom_right, f32 bottom_left);

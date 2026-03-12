@@ -5,6 +5,53 @@ static b32 GUI_PointInRect (Vec2 point, Rect2 rect)
     return Rect2_ContainsPoint(rect, point);
 }
 
+static f32 GUI_DefaultMeasureCharacterAdvance (u8 codepoint, f32 size)
+{
+    f32 factor;
+
+    factor = 0.60f;
+    if (codepoint == ' ')
+    {
+        factor = 0.38f;
+    }
+    else if ((codepoint == 'i') || (codepoint == 'l') || (codepoint == 'I') || (codepoint == '!') || (codepoint == '.') || (codepoint == ','))
+    {
+        factor = 0.32f;
+    }
+    else if ((codepoint == 'm') || (codepoint == 'w') || (codepoint == 'M') || (codepoint == 'W'))
+    {
+        factor = 0.82f;
+    }
+    else if ((codepoint >= 'A') && (codepoint <= 'Z'))
+    {
+        factor = 0.68f;
+    }
+    else if ((codepoint >= '0') && (codepoint <= '9'))
+    {
+        factor = 0.62f;
+    }
+
+    return size * factor;
+}
+
+static GUITextMetrics GUI_DefaultMeasureText (String text, f32 size, void *user_data)
+{
+    GUITextMetrics result;
+    usize index;
+
+    (void) user_data;
+
+    result.size = Vec2_Create(0.0f, size);
+    result.line_height = size;
+
+    for (index = 0; index < text.count; index += 1)
+    {
+        result.size.x += GUI_DefaultMeasureCharacterAdvance((u8) text.data[index], size);
+    }
+
+    return result;
+}
+
 static String GUI_CopyFrameString (GUIContext *context, String string)
 {
     c8 *memory;
@@ -208,6 +255,30 @@ const GUIDrawCommandBuffer *GUI_GetDrawCommands (const GUIContext *context)
 {
     ASSERT(context != NULL);
     return &context->draw_commands;
+}
+
+void GUI_SetTextMeasureFunction (GUIContext *context, GUITextMeasureFunction *function, void *user_data)
+{
+    ASSERT(context != NULL);
+    context->text_measure_function = function;
+    context->text_measure_user_data = user_data;
+}
+
+GUITextMetrics GUI_MeasureText (const GUIContext *context, String text, f32 size)
+{
+    ASSERT(context != NULL);
+
+    if (context->text_measure_function != NULL)
+    {
+        return context->text_measure_function(text, size, context->text_measure_user_data);
+    }
+
+    return GUI_DefaultMeasureText(text, size, NULL);
+}
+
+f32 GUI_MeasureTextWidth (const GUIContext *context, String text, f32 size)
+{
+    return GUI_MeasureText(context, text, size).size.x;
 }
 
 Vec4 GUIColor_Create (f32 r, f32 g, f32 b, f32 a)
