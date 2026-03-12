@@ -41,6 +41,13 @@ static GUIDrawCommand *GUI_PushDrawCommand (GUIContext *context, GUIDrawCommandT
     return command;
 }
 
+static GUILayoutScope *GUI_GetCurrentLayoutScope (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->layout_stack_count > 0);
+    return context->layout_stack + (context->layout_stack_count - 1);
+}
+
 b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, const GUIContextDesc *desc)
 {
     ASSERT(context != NULL);
@@ -165,6 +172,90 @@ Rect2 GUIRect_Inset (Rect2 rect, f32 amount_x, f32 amount_y)
     return rect;
 }
 
+void GUI_BeginLayout (GUIContext *context, Rect2 rect, GUILayoutAxis axis, f32 spacing)
+{
+    GUILayoutScope *scope;
+
+    ASSERT(context != NULL);
+    ASSERT(context->layout_stack_count < context->layout_stack_capacity);
+
+    scope = context->layout_stack + context->layout_stack_count;
+    context->layout_stack_count += 1;
+    scope->rect = rect;
+    scope->content_rect = rect;
+    scope->cursor = rect.min;
+    scope->spacing = spacing;
+    scope->axis = axis;
+}
+
+void GUI_EndLayout (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->layout_stack_count > 0);
+    context->layout_stack_count -= 1;
+}
+
+Rect2 GUI_LayoutNextRect (GUIContext *context, Vec2 size)
+{
+    GUILayoutScope *scope;
+    Rect2 rect;
+
+    scope = GUI_GetCurrentLayoutScope(context);
+    rect.min = scope->cursor;
+    rect.max = rect.min;
+
+    if (scope->axis == GUI_LAYOUT_AXIS_VERTICAL)
+    {
+        ASSERT(size.y > 0.0f);
+        rect.max.x = (size.x > 0.0f) ? MIN(scope->content_rect.max.x, rect.min.x + size.x) : scope->content_rect.max.x;
+        rect.max.y = rect.min.y + size.y;
+        scope->cursor.y = rect.max.y + scope->spacing;
+    }
+    else
+    {
+        ASSERT(size.x > 0.0f);
+        rect.max.x = rect.min.x + size.x;
+        rect.max.y = (size.y > 0.0f) ? MIN(scope->content_rect.max.y, rect.min.y + size.y) : scope->content_rect.max.y;
+        scope->cursor.x = rect.max.x + scope->spacing;
+    }
+
+    return rect;
+}
+
+void GUI_BeginRow (GUIContext *context, f32 height, f32 spacing)
+{
+    Rect2 rect;
+
+    ASSERT(context != NULL);
+    ASSERT(height > 0.0f);
+
+    rect = GUI_LayoutNextRect(context, Vec2_Create(0.0f, height));
+    GUI_BeginLayout(context, rect, GUI_LAYOUT_AXIS_HORIZONTAL, spacing);
+}
+
+void GUI_EndRow (GUIContext *context)
+{
+    GUI_EndLayout(context);
+}
+
+void GUI_Spacer (GUIContext *context, f32 size)
+{
+    GUILayoutScope *scope;
+
+    ASSERT(context != NULL);
+    ASSERT(size >= 0.0f);
+
+    scope = GUI_GetCurrentLayoutScope(context);
+    if (scope->axis == GUI_LAYOUT_AXIS_VERTICAL)
+    {
+        scope->cursor.y += size;
+    }
+    else
+    {
+        scope->cursor.x += size;
+    }
+}
+
 void GUI_PushClipRect (GUIContext *context, Rect2 rect)
 {
     GUIDrawCommand *command;
@@ -201,6 +292,18 @@ void GUI_DrawFilledRect (GUIContext *context, Rect2 rect, Vec4 color, f32 corner
     command->data.filled_rect.rect = rect;
     command->data.filled_rect.color = color;
     command->data.filled_rect.corner_radius = corner_radius;
+}
+
+void GUI_DrawStrokedRect (GUIContext *context, Rect2 rect, Vec4 color, f32 thickness, f32 corner_radius)
+{
+    GUIDrawCommand *command;
+
+    command = GUI_PushDrawCommand(context, GUI_DRAW_COMMAND_TYPE_STROKED_RECT);
+    ASSERT(command != NULL);
+    command->data.stroked_rect.rect = rect;
+    command->data.stroked_rect.color = color;
+    command->data.stroked_rect.thickness = thickness;
+    command->data.stroked_rect.corner_radius = corner_radius;
 }
 
 void GUI_DrawText (GUIContext *context, Vec2 position, String text, Vec4 color, f32 size)
