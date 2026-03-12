@@ -119,17 +119,17 @@ GUISliderStyle GUISliderStyle_Default (void)
 {
     GUISliderStyle style;
 
-    style.track_color = GUIColor_Create(0.17f, 0.19f, 0.24f, 1.0f);
-    style.fill_color = GUIColor_Create(0.36f, 0.64f, 0.94f, 1.0f);
-    style.knob_color = GUIColor_Create(0.93f, 0.95f, 0.99f, 1.0f);
+    style.track_color = GUIColor_Create(0.10f, 0.12f, 0.16f, 1.0f);
+    style.fill_color = GUIColor_Create(0.24f, 0.68f, 0.98f, 1.0f);
+    style.knob_color = GUIColor_Create(0.97f, 0.98f, 1.0f, 1.0f);
     style.border_color = GUIColor_Create(0.38f, 0.44f, 0.54f, 1.0f);
     style.text_color = GUIColor_Create(0.95f, 0.96f, 0.98f, 1.0f);
     style.corner_radii = GUICornerRadii_All(4.0f);
     style.border_thickness = GUIEdgeThickness_All(1.0f);
     style.text_size = 15.0f;
-    style.height = 42.0f;
-    style.track_height = 8.0f;
-    style.knob_width = 12.0f;
+    style.height = 46.0f;
+    style.track_height = 12.0f;
+    style.knob_width = 16.0f;
     style.spacing = 8.0f;
     return style;
 }
@@ -326,6 +326,7 @@ b32 GUI_SliderF32 (GUIContext *context, GUIID id, String label, f32 width, f32 m
     Rect2 track_rect;
     Rect2 fill_rect;
     Rect2 knob_rect;
+    Rect2 knob_accent_rect;
     Vec2 label_position;
     const GUISliderStyle *resolved_style;
     GUISliderStyle default_style;
@@ -407,10 +408,11 @@ b32 GUI_SliderF32 (GUIContext *context, GUIID id, String label, f32 width, f32 m
     fill_rect.max.x = knob_center_x;
     knob_rect = Rect2_Create(
         knob_center_x - (resolved_style->knob_width * 0.5f),
-        track_rect.min.y - 4.0f,
+        track_rect.min.y - 5.0f,
         knob_center_x + (resolved_style->knob_width * 0.5f),
-        track_rect.max.y + 4.0f
+        track_rect.max.y + 5.0f
     );
+    knob_accent_rect = GUIRect_Inset(knob_rect, 4.0f, 4.0f);
 
     GUI_DrawFilledRect(context, track_rect, resolved_style->track_color, resolved_style->corner_radii);
     if (fill_rect.max.x > fill_rect.min.x)
@@ -420,6 +422,7 @@ b32 GUI_SliderF32 (GUIContext *context, GUIID id, String label, f32 width, f32 m
 
     GUI_DrawStrokedRect(context, track_rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
     GUI_DrawFilledRect(context, knob_rect, resolved_style->knob_color, resolved_style->corner_radii);
+    GUI_DrawFilledRect(context, knob_accent_rect, resolved_style->fill_color, GUICornerRadii_All(2.0f));
     GUI_DrawStrokedRect(context, knob_rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
 
     return changed;
