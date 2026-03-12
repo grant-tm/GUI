@@ -21,6 +21,37 @@ typedef struct GUIEdgeThickness
     f32 bottom;
 } GUIEdgeThickness;
 
+typedef struct GUIPanelStyle
+{
+    Vec4 background_color;
+    Vec4 border_color;
+    GUICornerRadii corner_radii;
+    GUIEdgeThickness border_thickness;
+    Vec2 padding;
+    f32 spacing;
+} GUIPanelStyle;
+
+typedef struct GUILabelStyle
+{
+    Vec4 text_color;
+    f32 text_size;
+    f32 height;
+} GUILabelStyle;
+
+typedef struct GUIButtonStyle
+{
+    Vec4 background_color;
+    Vec4 hot_color;
+    Vec4 active_color;
+    Vec4 border_color;
+    Vec4 text_color;
+    GUICornerRadii corner_radii;
+    GUIEdgeThickness border_thickness;
+    f32 text_size;
+    f32 height;
+    Vec2 padding;
+} GUIButtonStyle;
+
 typedef enum GUIDrawCommandType
 {
     GUI_DRAW_COMMAND_TYPE_NONE = 0,
@@ -104,6 +135,7 @@ typedef struct GUIContextDesc
     usize max_draw_command_count;
     usize max_layout_depth;
     usize max_clip_depth;
+    usize max_style_stack_depth;
 } GUIContextDesc;
 
 typedef enum GUILayoutAxis
@@ -138,6 +170,15 @@ typedef struct GUIContext
     GUILayoutScope *layout_stack;
     usize layout_stack_count;
     usize layout_stack_capacity;
+    GUIPanelStyle *panel_style_stack;
+    usize panel_style_stack_count;
+    usize panel_style_stack_capacity;
+    GUILabelStyle *label_style_stack;
+    usize label_style_stack_count;
+    usize label_style_stack_capacity;
+    GUIButtonStyle *button_style_stack;
+    usize button_style_stack_count;
+    usize button_style_stack_capacity;
 } GUIContext;
 
 b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, const GUIContextDesc *desc);
@@ -154,6 +195,21 @@ GUIEdgeThickness GUIEdgeThickness_Create (f32 left, f32 top, f32 right, f32 bott
 GUIEdgeThickness GUIEdgeThickness_All (f32 value);
 Rect2 GUIRect_CutTop (Rect2 rect, f32 height);
 Rect2 GUIRect_Inset (Rect2 rect, f32 amount_x, f32 amount_y);
+
+GUIPanelStyle GUIPanelStyle_Default (void);
+GUILabelStyle GUILabelStyle_Default (void);
+GUIButtonStyle GUIButtonStyle_Default (void);
+
+const GUIPanelStyle *GUI_GetPanelStyle (const GUIContext *context);
+const GUILabelStyle *GUI_GetLabelStyle (const GUIContext *context);
+const GUIButtonStyle *GUI_GetButtonStyle (const GUIContext *context);
+
+void GUI_PushPanelStyle (GUIContext *context, const GUIPanelStyle *style);
+void GUI_PopPanelStyle (GUIContext *context);
+void GUI_PushLabelStyle (GUIContext *context, const GUILabelStyle *style);
+void GUI_PopLabelStyle (GUIContext *context);
+void GUI_PushButtonStyle (GUIContext *context, const GUIButtonStyle *style);
+void GUI_PopButtonStyle (GUIContext *context);
 
 void GUI_BeginLayout (GUIContext *context, Rect2 rect, GUILayoutAxis axis, f32 spacing);
 void GUI_EndLayout (GUIContext *context);

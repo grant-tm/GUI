@@ -48,6 +48,22 @@ static GUILayoutScope *GUI_GetCurrentLayoutScope (GUIContext *context)
     return context->layout_stack + (context->layout_stack_count - 1);
 }
 
+static void GUI_InitializeStyleStacks (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->panel_style_stack_capacity > 0);
+    ASSERT(context->label_style_stack_capacity > 0);
+    ASSERT(context->button_style_stack_capacity > 0);
+
+    context->panel_style_stack_count = 1;
+    context->label_style_stack_count = 1;
+    context->button_style_stack_count = 1;
+
+    context->panel_style_stack[0] = GUIPanelStyle_Default();
+    context->label_style_stack[0] = GUILabelStyle_Default();
+    context->button_style_stack[0] = GUIButtonStyle_Default();
+}
+
 b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, const GUIContextDesc *desc)
 {
     ASSERT(context != NULL);
@@ -56,6 +72,7 @@ b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, c
     ASSERT(desc->max_draw_command_count > 0);
     ASSERT(desc->max_layout_depth > 0);
     ASSERT(desc->max_clip_depth > 0);
+    ASSERT(desc->max_style_stack_depth > 0);
 
     Memory_ZeroStruct(context);
     context->persistent_arena = persistent_arena;
@@ -65,10 +82,25 @@ b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, c
     context->clip_stack_capacity = desc->max_clip_depth;
     context->layout_stack = MemoryArena_PushArrayZero(persistent_arena, GUILayoutScope, desc->max_layout_depth);
     context->layout_stack_capacity = desc->max_layout_depth;
+    context->panel_style_stack = MemoryArena_PushArrayZero(persistent_arena, GUIPanelStyle, desc->max_style_stack_depth);
+    context->panel_style_stack_capacity = desc->max_style_stack_depth;
+    context->label_style_stack = MemoryArena_PushArrayZero(persistent_arena, GUILabelStyle, desc->max_style_stack_depth);
+    context->label_style_stack_capacity = desc->max_style_stack_depth;
+    context->button_style_stack = MemoryArena_PushArrayZero(persistent_arena, GUIButtonStyle, desc->max_style_stack_depth);
+    context->button_style_stack_capacity = desc->max_style_stack_depth;
 
-    return (context->draw_commands.commands != NULL) &&
-           (context->clip_stack != NULL) &&
-           (context->layout_stack != NULL);
+    if ((context->draw_commands.commands != NULL) &&
+        (context->clip_stack != NULL) &&
+        (context->layout_stack != NULL) &&
+        (context->panel_style_stack != NULL) &&
+        (context->label_style_stack != NULL) &&
+        (context->button_style_stack != NULL))
+    {
+        GUI_InitializeStyleStacks(context);
+        return true;
+    }
+
+    return false;
 }
 
 void GUIContext_Shutdown (GUIContext *context)
@@ -187,6 +219,78 @@ GUIEdgeThickness GUIEdgeThickness_Create (f32 left, f32 top, f32 right, f32 bott
 GUIEdgeThickness GUIEdgeThickness_All (f32 value)
 {
     return GUIEdgeThickness_Create(value, value, value, value);
+}
+
+const GUIPanelStyle *GUI_GetPanelStyle (const GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->panel_style_stack_count > 0);
+    return context->panel_style_stack + (context->panel_style_stack_count - 1);
+}
+
+const GUILabelStyle *GUI_GetLabelStyle (const GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->label_style_stack_count > 0);
+    return context->label_style_stack + (context->label_style_stack_count - 1);
+}
+
+const GUIButtonStyle *GUI_GetButtonStyle (const GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->button_style_stack_count > 0);
+    return context->button_style_stack + (context->button_style_stack_count - 1);
+}
+
+void GUI_PushPanelStyle (GUIContext *context, const GUIPanelStyle *style)
+{
+    ASSERT(context != NULL);
+    ASSERT(style != NULL);
+    ASSERT(context->panel_style_stack_count < context->panel_style_stack_capacity);
+
+    context->panel_style_stack[context->panel_style_stack_count] = *style;
+    context->panel_style_stack_count += 1;
+}
+
+void GUI_PopPanelStyle (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->panel_style_stack_count > 1);
+    context->panel_style_stack_count -= 1;
+}
+
+void GUI_PushLabelStyle (GUIContext *context, const GUILabelStyle *style)
+{
+    ASSERT(context != NULL);
+    ASSERT(style != NULL);
+    ASSERT(context->label_style_stack_count < context->label_style_stack_capacity);
+
+    context->label_style_stack[context->label_style_stack_count] = *style;
+    context->label_style_stack_count += 1;
+}
+
+void GUI_PopLabelStyle (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->label_style_stack_count > 1);
+    context->label_style_stack_count -= 1;
+}
+
+void GUI_PushButtonStyle (GUIContext *context, const GUIButtonStyle *style)
+{
+    ASSERT(context != NULL);
+    ASSERT(style != NULL);
+    ASSERT(context->button_style_stack_count < context->button_style_stack_capacity);
+
+    context->button_style_stack[context->button_style_stack_count] = *style;
+    context->button_style_stack_count += 1;
+}
+
+void GUI_PopButtonStyle (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    ASSERT(context->button_style_stack_count > 1);
+    context->button_style_stack_count -= 1;
 }
 
 Rect2 GUIRect_CutTop (Rect2 rect, f32 height)
