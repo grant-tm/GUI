@@ -52,9 +52,27 @@ typedef struct GUIScrollRegionStyle
     f32 min_thumb_height;
 } GUIScrollRegionStyle;
 
+typedef struct GUICollapsibleSectionStyle
+{
+    Vec4 background_color;
+    Vec4 hot_color;
+    Vec4 active_color;
+    Vec4 border_color;
+    Vec4 text_color;
+    Vec4 accent_color;
+    GUICornerRadii corner_radii;
+    GUIEdgeThickness border_thickness;
+    Vec2 padding;
+    f32 text_size;
+    f32 height;
+    f32 spacing;
+    f32 indent;
+} GUICollapsibleSectionStyle;
+
 GUIToggleStyle GUIToggleStyle_Default (void);
 GUISliderStyle GUISliderStyle_Default (void);
 GUIScrollRegionStyle GUIScrollRegionStyle_Default (void);
+GUICollapsibleSectionStyle GUICollapsibleSectionStyle_Default (void);
 
 f32 GUI_MeasureLabelWidth (const GUIContext *context, String text, const GUILabelStyle *style);
 f32 GUI_MeasureMaxLabelWidth (const GUIContext *context, const String *texts, usize text_count, const GUILabelStyle *style);
@@ -64,6 +82,8 @@ void GUI_BeginPanel (GUIContext *context, GUIID id, Rect2 rect, const GUIPanelSt
 void GUI_EndPanel (GUIContext *context);
 void GUI_BeginScrollRegion (GUIContext *context, GUIID id, Rect2 rect, const GUIScrollRegionStyle *style);
 void GUI_EndScrollRegion (GUIContext *context);
+b32 GUI_BeginCollapsibleSection (GUIContext *context, GUIID id, String label, b32 default_expanded, const GUICollapsibleSectionStyle *style);
+void GUI_EndCollapsibleSection (GUIContext *context);
 void GUI_BeginFormRow (GUIContext *context, String label, f32 label_width, f32 height, f32 spacing, const GUILabelStyle *label_style);
 void GUI_EndFormRow (GUIContext *context);
 void GUI_BeginPropertyRow (GUIContext *context, String label, f32 label_width, f32 height, f32 spacing, const GUILabelStyle *label_style);

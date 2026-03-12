@@ -121,6 +121,7 @@ b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, c
     ASSERT(desc->max_clip_depth > 0);
     ASSERT(desc->max_style_stack_depth > 0);
     ASSERT(desc->max_scroll_region_count > 0);
+    ASSERT(desc->max_collapsible_section_count > 0);
 
     Memory_ZeroStruct(context);
     context->persistent_arena = persistent_arena;
@@ -134,6 +135,10 @@ b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, c
     context->scroll_region_state_capacity = desc->max_scroll_region_count;
     context->scroll_region_stack = MemoryArena_PushArrayZero(persistent_arena, GUIScrollRegionScope, desc->max_layout_depth);
     context->scroll_region_stack_capacity = desc->max_layout_depth;
+    context->collapsible_section_states = MemoryArena_PushArrayZero(persistent_arena, GUICollapsibleSectionState, desc->max_collapsible_section_count);
+    context->collapsible_section_state_capacity = desc->max_collapsible_section_count;
+    context->collapsible_section_stack = MemoryArena_PushArrayZero(persistent_arena, b32, desc->max_layout_depth);
+    context->collapsible_section_stack_capacity = desc->max_layout_depth;
     context->panel_style_stack = MemoryArena_PushArrayZero(persistent_arena, GUIPanelStyle, desc->max_style_stack_depth);
     context->panel_style_stack_capacity = desc->max_style_stack_depth;
     context->label_style_stack = MemoryArena_PushArrayZero(persistent_arena, GUILabelStyle, desc->max_style_stack_depth);
@@ -146,6 +151,8 @@ b32 GUIContext_Initialize (GUIContext *context, MemoryArena *persistent_arena, c
         (context->layout_stack != NULL) &&
         (context->scroll_region_states != NULL) &&
         (context->scroll_region_stack != NULL) &&
+        (context->collapsible_section_states != NULL) &&
+        (context->collapsible_section_stack != NULL) &&
         (context->panel_style_stack != NULL) &&
         (context->label_style_stack != NULL) &&
         (context->button_style_stack != NULL))
@@ -177,6 +184,7 @@ void GUI_BeginFrame (GUIContext *context, const GUIFrameDesc *desc)
     context->clip_stack_count = 0;
     context->layout_stack_count = 0;
     context->scroll_region_stack_count = 0;
+    context->collapsible_section_stack_count = 0;
 
     if (!context->input.mouse_buttons[PLATFORM_MOUSE_BUTTON_LEFT])
     {

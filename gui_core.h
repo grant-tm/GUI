@@ -167,6 +167,7 @@ typedef struct GUIContextDesc
     usize max_clip_depth;
     usize max_style_stack_depth;
     usize max_scroll_region_count;
+    usize max_collapsible_section_count;
 } GUIContextDesc;
 
 typedef enum GUILayoutAxis
@@ -208,6 +209,13 @@ typedef struct GUIScrollRegionScope
     GUIScrollRegionState *state;
 } GUIScrollRegionScope;
 
+typedef struct GUICollapsibleSectionState
+{
+    GUIID id;
+    b32 is_expanded;
+    b32 is_used;
+} GUICollapsibleSectionState;
+
 typedef struct GUIContext
 {
     MemoryArena *persistent_arena;
@@ -235,6 +243,12 @@ typedef struct GUIContext
     GUIScrollRegionScope *scroll_region_stack;
     usize scroll_region_stack_count;
     usize scroll_region_stack_capacity;
+    GUICollapsibleSectionState *collapsible_section_states;
+    usize collapsible_section_state_count;
+    usize collapsible_section_state_capacity;
+    b32 *collapsible_section_stack;
+    usize collapsible_section_stack_count;
+    usize collapsible_section_stack_capacity;
     GUIPanelStyle *panel_style_stack;
     usize panel_style_stack_count;
     usize panel_style_stack_capacity;

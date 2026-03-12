@@ -226,6 +226,45 @@ static GUIScrollRegionState *GUI_GetOrCreateScrollRegionState (GUIContext *conte
     return free_state;
 }
 
+static GUICollapsibleSectionState *GUI_GetOrCreateCollapsibleSectionState (GUIContext *context, GUIID id, b32 default_expanded)
+{
+    usize index;
+    GUICollapsibleSectionState *free_state;
+
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+
+    free_state = NULL;
+    for (index = 0; index < context->collapsible_section_state_capacity; index += 1)
+    {
+        GUICollapsibleSectionState *state;
+
+        state = context->collapsible_section_states + index;
+        if (state->is_used)
+        {
+            if (state->id == id)
+            {
+                return state;
+            }
+        }
+        else if (free_state == NULL)
+        {
+            free_state = state;
+        }
+    }
+
+    if (free_state != NULL)
+    {
+        Memory_ZeroStruct(free_state);
+        free_state->is_used = true;
+        free_state->id = id;
+        free_state->is_expanded = default_expanded;
+        context->collapsible_section_state_count += 1;
+    }
+
+    return free_state;
+}
+
 static Rect2 GUI_ScrollRegionTrackRect (const GUIScrollRegionScope *scope)
 {
     ASSERT(scope != NULL);
@@ -400,6 +439,26 @@ GUIScrollRegionStyle GUIScrollRegionStyle_Default (void)
     style.scrollbar_width = 10.0f;
     style.scrollbar_padding = 6.0f;
     style.min_thumb_height = 28.0f;
+    return style;
+}
+
+GUICollapsibleSectionStyle GUICollapsibleSectionStyle_Default (void)
+{
+    GUICollapsibleSectionStyle style;
+
+    style.background_color = GUIColor_Create(0.16f, 0.18f, 0.22f, 0.98f);
+    style.hot_color = GUIColor_Create(0.21f, 0.24f, 0.30f, 1.0f);
+    style.active_color = GUIColor_Create(0.12f, 0.15f, 0.20f, 1.0f);
+    style.border_color = GUIColor_Create(0.32f, 0.38f, 0.47f, 1.0f);
+    style.text_color = GUIColor_Create(0.95f, 0.97f, 1.0f, 1.0f);
+    style.accent_color = GUIColor_Create(0.24f, 0.68f, 0.98f, 1.0f);
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
+    style.padding = Vec2_Create(10.0f, 8.0f);
+    style.text_size = 16.0f;
+    style.height = 34.0f;
+    style.spacing = 8.0f;
+    style.indent = 14.0f;
     return style;
 }
 
@@ -759,6 +818,144 @@ void GUI_EndScrollRegion (GUIContext *context)
     }
 
     context->scroll_region_stack_count -= 1;
+}
+
+b32 GUI_BeginCollapsibleSection (GUIContext *context, GUIID id, String label, b32 default_expanded, const GUICollapsibleSectionStyle *style)
+{
+    GUICollapsibleSectionStyle default_style;
+    const GUICollapsibleSectionStyle *resolved_style;
+    GUICollapsibleSectionState *state;
+    Rect2 header_rect;
+    Rect2 accent_rect;
+    Rect2 content_rect;
+    Vec2 text_position;
+    Vec4 header_color;
+    c8 indicator_buffer[2];
+    String indicator_text;
+    b32 is_hot;
+    b32 was_pressed;
+    b32 was_released;
+
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+    ASSERT(context->collapsible_section_stack_count < context->collapsible_section_stack_capacity);
+
+    if (style == NULL)
+    {
+        default_style = GUICollapsibleSectionStyle_Default();
+        resolved_style = &default_style;
+    }
+    else
+    {
+        resolved_style = style;
+    }
+
+    state = GUI_GetOrCreateCollapsibleSectionState(context, id, default_expanded);
+    ASSERT(state != NULL);
+
+    header_rect = GUI_LayoutNextRect(context, Vec2_Create(0.0f, resolved_style->height));
+    is_hot = GUI_IsHot(context, id, header_rect);
+    was_pressed = context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT];
+    was_released = context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT];
+
+    if (is_hot && was_pressed)
+    {
+        context->active_id = id;
+    }
+
+    if ((context->active_id == id) && was_released)
+    {
+        if (is_hot)
+        {
+            state->is_expanded = !state->is_expanded;
+        }
+
+        context->active_id = 0;
+    }
+
+    header_color = resolved_style->background_color;
+    if (context->active_id == id)
+    {
+        header_color = resolved_style->active_color;
+    }
+    else if (is_hot)
+    {
+        header_color = resolved_style->hot_color;
+    }
+
+    GUI_DrawFilledRect(context, header_rect, header_color, resolved_style->corner_radii);
+    GUI_DrawStrokedRect(context, header_rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+
+    accent_rect = Rect2_Create(
+        header_rect.min.x,
+        header_rect.min.y,
+        MIN(header_rect.max.x, header_rect.min.x + 4.0f),
+        header_rect.max.y
+    );
+    GUI_DrawFilledRect(context, accent_rect, resolved_style->accent_color, GUICornerRadii_Create(
+        resolved_style->corner_radii.top_left,
+        0.0f,
+        0.0f,
+        resolved_style->corner_radii.bottom_left
+    ));
+
+    indicator_buffer[0] = state->is_expanded ? '-' : '+';
+    indicator_buffer[1] = 0;
+    indicator_text = String_Create(indicator_buffer, 1);
+
+    text_position = GUI_GetTextPosition(header_rect, resolved_style->padding, resolved_style->text_size);
+    GUI_DrawText(context, text_position, indicator_text, resolved_style->accent_color, resolved_style->text_size);
+    GUI_DrawText(
+        context,
+        Vec2_Create(text_position.x + 18.0f, text_position.y),
+        label,
+        resolved_style->text_color,
+        resolved_style->text_size
+    );
+
+    context->collapsible_section_stack[context->collapsible_section_stack_count] = state->is_expanded;
+    context->collapsible_section_stack_count += 1;
+
+    if (state->is_expanded)
+    {
+        GUILayoutScope *parent_scope;
+
+        parent_scope = GUI_GetCurrentLayoutScope(context);
+        ASSERT(parent_scope->axis == GUI_LAYOUT_AXIS_VERTICAL);
+
+        content_rect = parent_scope->content_rect;
+        content_rect.min = parent_scope->cursor;
+        content_rect.min.x += resolved_style->indent;
+        GUI_BeginLayout(context, content_rect, GUI_LAYOUT_AXIS_VERTICAL, resolved_style->spacing);
+    }
+
+    return state->is_expanded;
+}
+
+void GUI_EndCollapsibleSection (GUIContext *context)
+{
+    b32 is_expanded;
+
+    ASSERT(context != NULL);
+    ASSERT(context->collapsible_section_stack_count > 0);
+
+    is_expanded = context->collapsible_section_stack[context->collapsible_section_stack_count - 1];
+    context->collapsible_section_stack_count -= 1;
+
+    if (is_expanded)
+    {
+        GUILayoutScope *child_scope;
+        GUILayoutScope *parent_scope;
+        f32 content_end_y;
+
+        child_scope = GUI_GetCurrentLayoutScope(context);
+        content_end_y = MAX(child_scope->cursor.y - child_scope->spacing, child_scope->rect.min.y);
+        GUI_EndLayout(context);
+
+        parent_scope = GUI_GetCurrentLayoutScope(context);
+        ASSERT(parent_scope->axis == GUI_LAYOUT_AXIS_VERTICAL);
+        parent_scope->cursor.y = content_end_y + parent_scope->spacing;
+    }
 }
 
 void GUI_Label (GUIContext *context, String text, const GUILabelStyle *style)
