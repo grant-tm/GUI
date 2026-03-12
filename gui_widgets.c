@@ -33,6 +33,76 @@ static Vec2 GUI_GetTextPosition (Rect2 rect, Vec2 padding, f32 text_size)
     return Vec2_Create(rect.min.x + padding.x, rect.min.y + padding.y + (text_size * 0.75f));
 }
 
+static f32 GUI_EstimateTextWidth (String text, f32 text_size)
+{
+    return (f32) text.count * (text_size * 0.6f);
+}
+
+static usize GUI_GetCaretIndexFromPosition (Rect2 rect, Vec2 padding, String text, f32 text_size, f32 mouse_x)
+{
+    usize index;
+    f32 left_x;
+    f32 glyph_width;
+
+    left_x = rect.min.x + padding.x;
+    glyph_width = text_size * 0.6f;
+    if (glyph_width <= 0.0f)
+    {
+        return 0;
+    }
+
+    for (index = 0; index < text.count; index += 1)
+    {
+        f32 glyph_center_x;
+
+        glyph_center_x = left_x + ((f32) index * glyph_width) + (glyph_width * 0.5f);
+        if (mouse_x < glyph_center_x)
+        {
+            return index;
+        }
+    }
+
+    return text.count;
+}
+
+static b32 GUI_TextFieldInsertByte (c8 *buffer, usize capacity, usize *length, usize index, c8 value)
+{
+    ASSERT(buffer != NULL);
+    ASSERT(length != NULL);
+    ASSERT(index <= *length);
+
+    if ((*length + 1) >= capacity)
+    {
+        return false;
+    }
+
+    if (index < *length)
+    {
+        Memory_Move(buffer + index + 1, buffer + index, *length - index);
+    }
+
+    buffer[index] = value;
+    *length += 1;
+    buffer[*length] = 0;
+    return true;
+}
+
+static b32 GUI_TextFieldDeleteByte (c8 *buffer, usize *length, usize index)
+{
+    ASSERT(buffer != NULL);
+    ASSERT(length != NULL);
+    ASSERT(index < *length);
+
+    if ((index + 1) < *length)
+    {
+        Memory_Move(buffer + index, buffer + index + 1, *length - index - 1);
+    }
+
+    *length -= 1;
+    buffer[*length] = 0;
+    return true;
+}
+
 static f32 GUI_ClampToRange (f32 value, f32 min_value, f32 max_value)
 {
     return F32_Clamp(value, min_value, max_value);
@@ -131,6 +201,25 @@ GUISliderStyle GUISliderStyle_Default (void)
     style.track_height = 12.0f;
     style.knob_width = 16.0f;
     style.spacing = 8.0f;
+    return style;
+}
+
+GUITextFieldStyle GUITextFieldStyle_Default (void)
+{
+    GUITextFieldStyle style;
+
+    style.background_color = GUIColor_Create(0.11f, 0.13f, 0.17f, 1.0f);
+    style.hot_color = GUIColor_Create(0.14f, 0.17f, 0.22f, 1.0f);
+    style.focused_color = GUIColor_Create(0.13f, 0.18f, 0.25f, 1.0f);
+    style.border_color = GUIColor_Create(0.38f, 0.44f, 0.54f, 1.0f);
+    style.text_color = GUIColor_Create(0.97f, 0.98f, 1.0f, 1.0f);
+    style.placeholder_color = GUIColor_Create(0.54f, 0.58f, 0.66f, 1.0f);
+    style.caret_color = GUIColor_Create(0.87f, 0.92f, 1.0f, 1.0f);
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
+    style.text_size = 16.0f;
+    style.height = 34.0f;
+    style.padding = Vec2_Create(10.0f, 8.0f);
     return style;
 }
 
@@ -424,6 +513,207 @@ b32 GUI_SliderF32 (GUIContext *context, GUIID id, String label, f32 width, f32 m
     GUI_DrawFilledRect(context, knob_rect, resolved_style->knob_color, resolved_style->corner_radii);
     GUI_DrawFilledRect(context, knob_accent_rect, resolved_style->fill_color, GUICornerRadii_All(2.0f));
     GUI_DrawStrokedRect(context, knob_rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+
+    return changed;
+}
+
+b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, usize *length, String placeholder, const GUITextFieldStyle *style)
+{
+    Rect2 rect;
+    Vec2 text_position;
+    Vec4 background_color;
+    GUITextFieldStyle default_style;
+    const GUITextFieldStyle *resolved_style;
+    String text;
+    b32 is_hot;
+    b32 is_focused;
+    b32 changed;
+    usize event_index;
+
+    ASSERT(context != NULL);
+    ASSERT(buffer != NULL);
+    ASSERT(length != NULL);
+    ASSERT(capacity > 0);
+    ASSERT(*length < capacity);
+
+    if (style == NULL)
+    {
+        default_style = GUITextFieldStyle_Default();
+        resolved_style = &default_style;
+    }
+    else
+    {
+        resolved_style = style;
+    }
+
+    rect = GUI_LayoutNextRect(context, Vec2_Create(0.0f, resolved_style->height));
+    text = String_Create(buffer, *length);
+    is_hot = GUI_IsHot(context, id, rect);
+    is_focused = context->focused_id == id;
+    changed = false;
+
+    if (is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->active_id = id;
+        context->focused_id = id;
+        context->text_field_caret = GUI_GetCaretIndexFromPosition(rect, resolved_style->padding, text, resolved_style->text_size, context->input.mouse_position.x);
+        context->text_field_selection_anchor = context->text_field_caret;
+        is_focused = true;
+    }
+    else if (context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && !is_hot && is_focused)
+    {
+        context->focused_id = 0;
+        is_focused = false;
+    }
+
+    if (context->active_id == id && context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->active_id = 0;
+    }
+
+    if (is_focused)
+    {
+        if (context->input.keys_pressed[PLATFORM_KEY_LEFT] && (context->text_field_caret > 0))
+        {
+            context->text_field_caret -= 1;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_RIGHT] && (context->text_field_caret < *length))
+        {
+            context->text_field_caret += 1;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_HOME])
+        {
+            context->text_field_caret = 0;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_END])
+        {
+            context->text_field_caret = *length;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_BACKSPACE] && (context->text_field_caret > 0))
+        {
+            changed |= GUI_TextFieldDeleteByte(buffer, length, context->text_field_caret - 1);
+            context->text_field_caret -= 1;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_DELETE] && (context->text_field_caret < *length))
+        {
+            changed |= GUI_TextFieldDeleteByte(buffer, length, context->text_field_caret);
+        }
+
+        if (context->input.control_is_down)
+        {
+            if (context->input.keys_pressed[PLATFORM_KEY_A])
+            {
+                context->text_field_selection_anchor = 0;
+                context->text_field_caret = *length;
+            }
+
+            if (context->input.keys_pressed[PLATFORM_KEY_C])
+            {
+                Platform_SetClipboardText(String_Create(buffer, *length));
+            }
+
+            if (context->input.keys_pressed[PLATFORM_KEY_X])
+            {
+                Platform_SetClipboardText(String_Create(buffer, *length));
+                if (*length > 0)
+                {
+                    *length = 0;
+                    buffer[0] = 0;
+                    context->text_field_caret = 0;
+                    context->text_field_selection_anchor = 0;
+                    changed = true;
+                }
+            }
+
+            if (context->input.keys_pressed[PLATFORM_KEY_V] && Platform_HasClipboardText())
+            {
+                c8 clipboard_buffer[2048];
+                MemoryArena clipboard_arena;
+                String clipboard_text;
+                usize clipboard_index;
+
+                clipboard_arena = MemoryArena_Create(clipboard_buffer, sizeof(clipboard_buffer));
+                clipboard_text = Platform_GetClipboardText(&clipboard_arena);
+                for (clipboard_index = 0; clipboard_index < clipboard_text.count; clipboard_index += 1)
+                {
+                    if ((clipboard_text.data[clipboard_index] >= 32) && (clipboard_text.data[clipboard_index] <= 126))
+                    {
+                        if (GUI_TextFieldInsertByte(buffer, capacity, length, context->text_field_caret, clipboard_text.data[clipboard_index]))
+                        {
+                            context->text_field_caret += 1;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (event_index = 0; event_index < context->input.text_input_codepoint_count; event_index += 1)
+            {
+                u32 codepoint;
+
+                codepoint = context->input.text_input_codepoints[event_index];
+                if ((codepoint >= 32u) && (codepoint <= 126u))
+                {
+                    if (GUI_TextFieldInsertByte(buffer, capacity, length, context->text_field_caret, (c8) codepoint))
+                    {
+                        context->text_field_caret += 1;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (context->text_field_caret > *length)
+    {
+        context->text_field_caret = *length;
+    }
+
+    background_color = resolved_style->background_color;
+    if (is_focused)
+    {
+        background_color = resolved_style->focused_color;
+    }
+    else if (is_hot)
+    {
+        background_color = resolved_style->hot_color;
+    }
+
+    GUI_DrawFilledRect(context, rect, background_color, resolved_style->corner_radii);
+    GUI_DrawStrokedRect(context, rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+
+    text = String_Create(buffer, *length);
+    text_position = GUI_GetTextPosition(rect, resolved_style->padding, resolved_style->text_size);
+    if (text.count > 0)
+    {
+        GUI_DrawText(context, text_position, text, resolved_style->text_color, resolved_style->text_size);
+    }
+    else if (!String_IsEmpty(placeholder))
+    {
+        GUI_DrawText(context, text_position, placeholder, resolved_style->placeholder_color, resolved_style->text_size);
+    }
+
+    if (is_focused)
+    {
+        f32 caret_x;
+        Rect2 caret_rect;
+
+        caret_x = rect.min.x + resolved_style->padding.x + GUI_EstimateTextWidth(String_Create(buffer, context->text_field_caret), resolved_style->text_size);
+        caret_rect = Rect2_Create(
+            caret_x,
+            rect.min.y + resolved_style->padding.y - 1.0f,
+            caret_x + 1.5f,
+            rect.max.y - resolved_style->padding.y + 1.0f
+        );
+        GUI_DrawFilledRect(context, caret_rect, resolved_style->caret_color, GUICornerRadii_All(0.0f));
+    }
 
     return changed;
 }

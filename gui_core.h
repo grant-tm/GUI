@@ -52,6 +52,22 @@ typedef struct GUIButtonStyle
     Vec2 padding;
 } GUIButtonStyle;
 
+typedef struct GUITextFieldStyle
+{
+    Vec4 background_color;
+    Vec4 hot_color;
+    Vec4 focused_color;
+    Vec4 border_color;
+    Vec4 text_color;
+    Vec4 placeholder_color;
+    Vec4 caret_color;
+    GUICornerRadii corner_radii;
+    GUIEdgeThickness border_thickness;
+    f32 text_size;
+    f32 height;
+    Vec2 padding;
+} GUITextFieldStyle;
+
 typedef enum GUIDrawCommandType
 {
     GUI_DRAW_COMMAND_TYPE_NONE = 0,
@@ -115,12 +131,17 @@ typedef struct GUIInputState
     Vec2 mouse_position;
     Vec2 mouse_delta;
     i32 mouse_wheel_delta;
+    b32 keys[PLATFORM_KEY_COUNT];
+    b32 keys_pressed[PLATFORM_KEY_COUNT];
+    b32 keys_released[PLATFORM_KEY_COUNT];
     b32 mouse_buttons[PLATFORM_MOUSE_BUTTON_COUNT];
     b32 mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_COUNT];
     b32 mouse_buttons_released[PLATFORM_MOUSE_BUTTON_COUNT];
     b32 shift_is_down;
     b32 control_is_down;
     b32 alt_is_down;
+    u32 text_input_codepoints[32];
+    usize text_input_codepoint_count;
 } GUIInputState;
 
 typedef struct GUIFrameDesc
@@ -163,6 +184,8 @@ typedef struct GUIContext
     GUIID hot_id;
     GUIID active_id;
     GUIID focused_id;
+    usize text_field_caret;
+    usize text_field_selection_anchor;
     GUIDrawCommandBuffer draw_commands;
     Rect2 *clip_stack;
     usize clip_stack_count;
@@ -199,6 +222,7 @@ Rect2 GUIRect_Inset (Rect2 rect, f32 amount_x, f32 amount_y);
 GUIPanelStyle GUIPanelStyle_Default (void);
 GUILabelStyle GUILabelStyle_Default (void);
 GUIButtonStyle GUIButtonStyle_Default (void);
+GUITextFieldStyle GUITextFieldStyle_Default (void);
 
 const GUIPanelStyle *GUI_GetPanelStyle (const GUIContext *context);
 const GUILabelStyle *GUI_GetLabelStyle (const GUIContext *context);

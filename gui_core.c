@@ -144,6 +144,9 @@ void GUI_SubmitPlatformInput (GUIContext *context, const PlatformEventBuffer *ev
 
     Memory_ZeroArray(context->input.mouse_buttons_pressed, ARRAY_COUNT(context->input.mouse_buttons_pressed));
     Memory_ZeroArray(context->input.mouse_buttons_released, ARRAY_COUNT(context->input.mouse_buttons_released));
+    Memory_ZeroArray(context->input.keys_pressed, ARRAY_COUNT(context->input.keys_pressed));
+    Memory_ZeroArray(context->input.keys_released, ARRAY_COUNT(context->input.keys_released));
+    context->input.text_input_codepoint_count = 0;
 
     context->input.mouse_position = Vec2_Create((f32) input_state->mouse_position.x, (f32) input_state->mouse_position.y);
     context->input.mouse_delta = Vec2_Create((f32) input_state->mouse_delta.x, (f32) input_state->mouse_delta.y);
@@ -151,6 +154,7 @@ void GUI_SubmitPlatformInput (GUIContext *context, const PlatformEventBuffer *ev
     context->input.shift_is_down = input_state->shift_is_down;
     context->input.control_is_down = input_state->control_is_down;
     context->input.alt_is_down = input_state->alt_is_down;
+    Memory_Copy(context->input.keys, input_state->keys, sizeof(input_state->keys));
 
     for (event_index = 0; event_index < events->count; event_index += 1)
     {
@@ -171,6 +175,28 @@ void GUI_SubmitPlatformInput (GUIContext *context, const PlatformEventBuffer *ev
                 (event->data.mouse_button.button < PLATFORM_MOUSE_BUTTON_COUNT))
             {
                 context->input.mouse_buttons_released[event->data.mouse_button.button] = true;
+            }
+        }
+        else if (event->type == PLATFORM_EVENT_KEY_DOWN)
+        {
+            if ((event->data.key.key > PLATFORM_KEY_NONE) && (event->data.key.key < PLATFORM_KEY_COUNT))
+            {
+                context->input.keys_pressed[event->data.key.key] = true;
+            }
+        }
+        else if (event->type == PLATFORM_EVENT_KEY_UP)
+        {
+            if ((event->data.key.key > PLATFORM_KEY_NONE) && (event->data.key.key < PLATFORM_KEY_COUNT))
+            {
+                context->input.keys_released[event->data.key.key] = true;
+            }
+        }
+        else if (event->type == PLATFORM_EVENT_TEXT_INPUT)
+        {
+            if (context->input.text_input_codepoint_count < ARRAY_COUNT(context->input.text_input_codepoints))
+            {
+                context->input.text_input_codepoints[context->input.text_input_codepoint_count] = event->data.text_input.codepoint;
+                context->input.text_input_codepoint_count += 1;
             }
         }
     }
