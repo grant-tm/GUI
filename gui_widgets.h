@@ -7,8 +7,8 @@ typedef struct GUIPanelStyle
 {
     Vec4 background_color;
     Vec4 border_color;
-    f32 corner_radius;
-    f32 border_thickness;
+    GUICornerRadii corner_radii;
+    GUIEdgeThickness border_thickness;
     Vec2 padding;
     f32 spacing;
 } GUIPanelStyle;
@@ -27,8 +27,8 @@ typedef struct GUIButtonStyle
     Vec4 active_color;
     Vec4 border_color;
     Vec4 text_color;
-    f32 corner_radius;
-    f32 border_thickness;
+    GUICornerRadii corner_radii;
+    GUIEdgeThickness border_thickness;
     f32 text_size;
     f32 height;
     Vec2 padding;

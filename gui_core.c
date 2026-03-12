@@ -157,6 +157,38 @@ Vec4 GUIColor_Create (f32 r, f32 g, f32 b, f32 a)
     return Vec4_Create(r, g, b, a);
 }
 
+GUICornerRadii GUICornerRadii_Create (f32 top_left, f32 top_right, f32 bottom_right, f32 bottom_left)
+{
+    GUICornerRadii result;
+
+    result.top_left = top_left;
+    result.top_right = top_right;
+    result.bottom_right = bottom_right;
+    result.bottom_left = bottom_left;
+    return result;
+}
+
+GUICornerRadii GUICornerRadii_All (f32 value)
+{
+    return GUICornerRadii_Create(value, value, value, value);
+}
+
+GUIEdgeThickness GUIEdgeThickness_Create (f32 left, f32 top, f32 right, f32 bottom)
+{
+    GUIEdgeThickness result;
+
+    result.left = left;
+    result.top = top;
+    result.right = right;
+    result.bottom = bottom;
+    return result;
+}
+
+GUIEdgeThickness GUIEdgeThickness_All (f32 value)
+{
+    return GUIEdgeThickness_Create(value, value, value, value);
+}
+
 Rect2 GUIRect_CutTop (Rect2 rect, f32 height)
 {
     rect.max.y = MIN(rect.max.y, rect.min.y + height);
@@ -283,7 +315,7 @@ void GUI_PopClipRect (GUIContext *context)
     ASSERT(command != NULL);
 }
 
-void GUI_DrawFilledRect (GUIContext *context, Rect2 rect, Vec4 color, f32 corner_radius)
+void GUI_DrawFilledRect (GUIContext *context, Rect2 rect, Vec4 color, GUICornerRadii corner_radii)
 {
     GUIDrawCommand *command;
 
@@ -291,10 +323,10 @@ void GUI_DrawFilledRect (GUIContext *context, Rect2 rect, Vec4 color, f32 corner
     ASSERT(command != NULL);
     command->data.filled_rect.rect = rect;
     command->data.filled_rect.color = color;
-    command->data.filled_rect.corner_radius = corner_radius;
+    command->data.filled_rect.corner_radii = corner_radii;
 }
 
-void GUI_DrawStrokedRect (GUIContext *context, Rect2 rect, Vec4 color, f32 thickness, f32 corner_radius)
+void GUI_DrawStrokedRect (GUIContext *context, Rect2 rect, Vec4 color, GUIEdgeThickness thickness, GUICornerRadii corner_radii)
 {
     GUIDrawCommand *command;
 
@@ -303,7 +335,7 @@ void GUI_DrawStrokedRect (GUIContext *context, Rect2 rect, Vec4 color, f32 thick
     command->data.stroked_rect.rect = rect;
     command->data.stroked_rect.color = color;
     command->data.stroked_rect.thickness = thickness;
-    command->data.stroked_rect.corner_radius = corner_radius;
+    command->data.stroked_rect.corner_radii = corner_radii;
 }
 
 void GUI_DrawText (GUIContext *context, Vec2 position, String text, Vec4 color, f32 size)

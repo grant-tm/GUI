@@ -39,8 +39,8 @@ GUIPanelStyle GUIPanelStyle_Default (void)
 
     style.background_color = GUIColor_Create(0.12f, 0.13f, 0.15f, 1.0f);
     style.border_color = GUIColor_Create(0.20f, 0.23f, 0.28f, 1.0f);
-    style.corner_radius = 6.0f;
-    style.border_thickness = 1.0f;
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
     style.padding = Vec2_Create(12.0f, 12.0f);
     style.spacing = 8.0f;
     return style;
@@ -65,8 +65,8 @@ GUIButtonStyle GUIButtonStyle_Default (void)
     style.active_color = GUIColor_Create(0.16f, 0.19f, 0.25f, 1.0f);
     style.border_color = GUIColor_Create(0.38f, 0.44f, 0.54f, 1.0f);
     style.text_color = GUIColor_Create(0.97f, 0.98f, 1.0f, 1.0f);
-    style.corner_radius = 6.0f;
-    style.border_thickness = 1.0f;
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
     style.text_size = 16.0f;
     style.height = 32.0f;
     style.padding = Vec2_Create(10.0f, 7.0f);
@@ -85,8 +85,8 @@ void GUI_BeginPanel (GUIContext *context, GUIID id, Rect2 rect, const GUIPanelSt
     ASSERT(context->layout_stack_count < context->layout_stack_capacity);
 
     resolved_style = *style;
-    GUI_DrawFilledRect(context, rect, resolved_style.background_color, resolved_style.corner_radius);
-    GUI_DrawStrokedRect(context, rect, resolved_style.border_color, resolved_style.border_thickness, resolved_style.corner_radius);
+    GUI_DrawFilledRect(context, rect, resolved_style.background_color, resolved_style.corner_radii);
+    GUI_DrawStrokedRect(context, rect, resolved_style.border_color, resolved_style.border_thickness, resolved_style.corner_radii);
     GUI_PushClipRect(context, rect);
     GUI_BeginLayout(context, GUIRect_Inset(rect, resolved_style.padding.x, resolved_style.padding.y), GUI_LAYOUT_AXIS_VERTICAL, resolved_style.spacing);
 
@@ -161,8 +161,8 @@ b32 GUI_Button (GUIContext *context, GUIID id, String text, f32 width, const GUI
         color = style->hot_color;
     }
 
-    GUI_DrawFilledRect(context, rect, color, style->corner_radius);
-    GUI_DrawStrokedRect(context, rect, style->border_color, style->border_thickness, style->corner_radius);
+    GUI_DrawFilledRect(context, rect, color, style->corner_radii);
+    GUI_DrawStrokedRect(context, rect, style->border_color, style->border_thickness, style->corner_radii);
     text_position = GUI_GetTextPosition(rect, style->padding, style->text_size);
     GUI_DrawText(context, text_position, text, style->text_color, style->text_size);
     return clicked;

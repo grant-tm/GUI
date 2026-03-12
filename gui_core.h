@@ -5,6 +5,22 @@
 
 typedef u64 GUIID;
 
+typedef struct GUICornerRadii
+{
+    f32 top_left;
+    f32 top_right;
+    f32 bottom_right;
+    f32 bottom_left;
+} GUICornerRadii;
+
+typedef struct GUIEdgeThickness
+{
+    f32 left;
+    f32 top;
+    f32 right;
+    f32 bottom;
+} GUIEdgeThickness;
+
 typedef enum GUIDrawCommandType
 {
     GUI_DRAW_COMMAND_TYPE_NONE = 0,
@@ -24,15 +40,15 @@ typedef struct GUIDrawCommandFilledRect
 {
     Rect2 rect;
     Vec4 color;
-    f32 corner_radius;
+    GUICornerRadii corner_radii;
 } GUIDrawCommandFilledRect;
 
 typedef struct GUIDrawCommandStrokedRect
 {
     Rect2 rect;
     Vec4 color;
-    f32 thickness;
-    f32 corner_radius;
+    GUIEdgeThickness thickness;
+    GUICornerRadii corner_radii;
 } GUIDrawCommandStrokedRect;
 
 typedef struct GUIDrawCommandText
@@ -132,6 +148,10 @@ void GUI_SubmitPlatformInput (GUIContext *context, const PlatformEventBuffer *ev
 const GUIDrawCommandBuffer *GUI_GetDrawCommands (const GUIContext *context);
 
 Vec4 GUIColor_Create (f32 r, f32 g, f32 b, f32 a);
+GUICornerRadii GUICornerRadii_Create (f32 top_left, f32 top_right, f32 bottom_right, f32 bottom_left);
+GUICornerRadii GUICornerRadii_All (f32 value);
+GUIEdgeThickness GUIEdgeThickness_Create (f32 left, f32 top, f32 right, f32 bottom);
+GUIEdgeThickness GUIEdgeThickness_All (f32 value);
 Rect2 GUIRect_CutTop (Rect2 rect, f32 height);
 Rect2 GUIRect_Inset (Rect2 rect, f32 amount_x, f32 amount_y);
 
@@ -144,8 +164,8 @@ void GUI_Spacer (GUIContext *context, f32 size);
 
 void GUI_PushClipRect (GUIContext *context, Rect2 rect);
 void GUI_PopClipRect (GUIContext *context);
-void GUI_DrawFilledRect (GUIContext *context, Rect2 rect, Vec4 color, f32 corner_radius);
-void GUI_DrawStrokedRect (GUIContext *context, Rect2 rect, Vec4 color, f32 thickness, f32 corner_radius);
+void GUI_DrawFilledRect (GUIContext *context, Rect2 rect, Vec4 color, GUICornerRadii corner_radii);
+void GUI_DrawStrokedRect (GUIContext *context, Rect2 rect, Vec4 color, GUIEdgeThickness thickness, GUICornerRadii corner_radii);
 void GUI_DrawText (GUIContext *context, Vec2 position, String text, Vec4 color, f32 size);
 
 #endif // GUI_CORE_H
