@@ -166,6 +166,7 @@ typedef struct GUIContextDesc
     usize max_layout_depth;
     usize max_clip_depth;
     usize max_style_stack_depth;
+    usize max_scroll_region_count;
 } GUIContextDesc;
 
 typedef enum GUILayoutAxis
@@ -182,6 +183,30 @@ typedef struct GUILayoutScope
     f32 spacing;
     GUILayoutAxis axis;
 } GUILayoutScope;
+
+typedef struct GUIScrollRegionState
+{
+    GUIID id;
+    f32 scroll_y;
+    f32 drag_grab_offset_y;
+    f32 content_height;
+    b32 is_used;
+} GUIScrollRegionState;
+
+typedef struct GUIScrollRegionScope
+{
+    Rect2 rect;
+    Rect2 viewport_rect;
+    Rect2 content_rect;
+    Vec4 scrollbar_track_color;
+    Vec4 scrollbar_thumb_color;
+    Vec4 scrollbar_thumb_hot_color;
+    Vec4 scrollbar_thumb_active_color;
+    f32 scrollbar_width;
+    f32 scrollbar_padding;
+    f32 min_thumb_height;
+    GUIScrollRegionState *state;
+} GUIScrollRegionScope;
 
 typedef struct GUIContext
 {
@@ -204,6 +229,12 @@ typedef struct GUIContext
     GUILayoutScope *layout_stack;
     usize layout_stack_count;
     usize layout_stack_capacity;
+    GUIScrollRegionState *scroll_region_states;
+    usize scroll_region_state_count;
+    usize scroll_region_state_capacity;
+    GUIScrollRegionScope *scroll_region_stack;
+    usize scroll_region_stack_count;
+    usize scroll_region_stack_capacity;
     GUIPanelStyle *panel_style_stack;
     usize panel_style_stack_count;
     usize panel_style_stack_capacity;

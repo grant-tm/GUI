@@ -180,6 +180,100 @@ static b32 GUI_TextFieldDeleteSelection (GUIContext *context, c8 *buffer, usize 
     return changed;
 }
 
+static GUIScrollRegionState *GUI_GetOrCreateScrollRegionState (GUIContext *context, GUIID id)
+{
+    usize index;
+    GUIScrollRegionState *free_state;
+
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+
+    free_state = NULL;
+    for (index = 0; index < context->scroll_region_state_capacity; index += 1)
+    {
+        GUIScrollRegionState *state;
+
+        state = context->scroll_region_states + index;
+        if (state->is_used)
+        {
+            if (state->id == id)
+            {
+                return state;
+            }
+        }
+        else if (free_state == NULL)
+        {
+            free_state = state;
+        }
+    }
+
+    if (free_state != NULL)
+    {
+        Memory_ZeroStruct(free_state);
+        free_state->is_used = true;
+        free_state->id = id;
+        context->scroll_region_state_count += 1;
+    }
+
+    return free_state;
+}
+
+static Rect2 GUI_ScrollRegionTrackRect (const GUIScrollRegionScope *scope)
+{
+    ASSERT(scope != NULL);
+
+    return Rect2_Create(
+        scope->viewport_rect.max.x - scope->scrollbar_width,
+        scope->viewport_rect.min.y,
+        scope->viewport_rect.max.x,
+        scope->viewport_rect.max.y
+    );
+}
+
+static Rect2 GUI_ScrollRegionThumbRect (const GUIScrollRegionScope *scope, f32 content_height, f32 viewport_height, f32 max_scroll)
+{
+    Rect2 track_rect;
+    Rect2 thumb_rect;
+    f32 thumb_height;
+    f32 thumb_offset;
+    f32 thumb_travel;
+
+    ASSERT(scope != NULL);
+
+    track_rect = GUI_ScrollRegionTrackRect(scope);
+    thumb_height = MAX(scope->min_thumb_height, (viewport_height / content_height) * viewport_height);
+    thumb_height = MIN(thumb_height, viewport_height);
+    thumb_travel = MAX(0.0f, viewport_height - thumb_height);
+    thumb_offset = (max_scroll > 0.0f) ? (scope->state->scroll_y / max_scroll) * thumb_travel : 0.0f;
+
+    thumb_rect = Rect2_Create(
+        track_rect.min.x,
+        track_rect.min.y + thumb_offset,
+        track_rect.max.x,
+        track_rect.min.y + thumb_offset + thumb_height
+    );
+
+    return thumb_rect;
+}
+
+static f32 GUI_ScrollRegionScrollFromTrackPosition (const GUIScrollRegionScope *scope, Rect2 thumb_rect, f32 viewport_height, f32 max_scroll, f32 mouse_y)
+{
+    f32 thumb_height;
+    f32 thumb_travel;
+    f32 thumb_top;
+    f32 normalized_scroll;
+
+    ASSERT(scope != NULL);
+
+    thumb_height = thumb_rect.max.y - thumb_rect.min.y;
+    thumb_travel = MAX(0.0f, viewport_height - thumb_height);
+    thumb_top = mouse_y - scope->state->drag_grab_offset_y - scope->viewport_rect.min.y;
+    thumb_top = F32_Clamp(thumb_top, 0.0f, thumb_travel);
+    normalized_scroll = (thumb_travel > 0.0f) ? (thumb_top / thumb_travel) : 0.0f;
+
+    return normalized_scroll * max_scroll;
+}
+
 static f32 GUI_ClampToRange (f32 value, f32 min_value, f32 max_value)
 {
     return F32_Clamp(value, min_value, max_value);
@@ -281,6 +375,26 @@ GUISliderStyle GUISliderStyle_Default (void)
     return style;
 }
 
+GUIScrollRegionStyle GUIScrollRegionStyle_Default (void)
+{
+    GUIScrollRegionStyle style;
+
+    style.background_color = GUIColor_Create(0.09f, 0.11f, 0.14f, 0.96f);
+    style.border_color = GUIColor_Create(0.20f, 0.24f, 0.30f, 1.0f);
+    style.scrollbar_track_color = GUIColor_Create(0.07f, 0.09f, 0.12f, 1.0f);
+    style.scrollbar_thumb_color = GUIColor_Create(0.34f, 0.40f, 0.50f, 1.0f);
+    style.scrollbar_thumb_hot_color = GUIColor_Create(0.43f, 0.51f, 0.63f, 1.0f);
+    style.scrollbar_thumb_active_color = GUIColor_Create(0.25f, 0.31f, 0.40f, 1.0f);
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
+    style.padding = Vec2_Create(10.0f, 10.0f);
+    style.spacing = 8.0f;
+    style.scrollbar_width = 10.0f;
+    style.scrollbar_padding = 6.0f;
+    style.min_thumb_height = 28.0f;
+    return style;
+}
+
 GUITextFieldStyle GUITextFieldStyle_Default (void)
 {
     GUITextFieldStyle style;
@@ -329,6 +443,237 @@ void GUI_EndPanel (GUIContext *context)
 
     context->layout_stack_count -= 1;
     GUI_PopClipRect(context);
+}
+
+void GUI_BeginScrollRegion (GUIContext *context, GUIID id, Rect2 rect, const GUIScrollRegionStyle *style)
+{
+    GUIScrollRegionStyle default_style;
+    const GUIScrollRegionStyle *resolved_style;
+    GUIScrollRegionState *state;
+    GUIScrollRegionScope *scope;
+    GUIScrollRegionScope interaction_scope;
+    Rect2 viewport_rect;
+    Rect2 content_rect;
+    Rect2 layout_rect;
+    Rect2 track_rect;
+    Rect2 thumb_rect;
+    b32 is_region_hovered;
+    b32 is_track_hovered;
+    b32 is_thumb_hovered;
+    b32 can_keyboard_scroll;
+    f32 scroll_step;
+    f32 viewport_height;
+    f32 max_scroll;
+    f32 scroll_delta;
+
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+    ASSERT(context->scroll_region_stack_count < context->scroll_region_stack_capacity);
+
+    if (style == NULL)
+    {
+        default_style = GUIScrollRegionStyle_Default();
+        resolved_style = &default_style;
+    }
+    else
+    {
+        resolved_style = style;
+    }
+
+    state = GUI_GetOrCreateScrollRegionState(context, id);
+    ASSERT(state != NULL);
+
+    GUI_DrawFilledRect(context, rect, resolved_style->background_color, resolved_style->corner_radii);
+    GUI_DrawStrokedRect(context, rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+
+    viewport_rect = GUIRect_Inset(rect, resolved_style->padding.x, resolved_style->padding.y);
+    viewport_height = viewport_rect.max.y - viewport_rect.min.y;
+    max_scroll = MAX(0.0f, state->content_height - viewport_height);
+    scroll_delta = 0.0f;
+    is_region_hovered = GUI_PointInRect(context->input.mouse_position, rect);
+
+    interaction_scope.viewport_rect = viewport_rect;
+    interaction_scope.scrollbar_width = resolved_style->scrollbar_width;
+    interaction_scope.min_thumb_height = resolved_style->min_thumb_height;
+    interaction_scope.state = state;
+
+    if (is_region_hovered && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->focused_id = id;
+    }
+
+    if (is_region_hovered && (context->input.mouse_wheel_delta != 0))
+    {
+        scroll_step = ((f32) context->input.mouse_wheel_delta / 120.0f) * 36.0f;
+        state->scroll_y = state->scroll_y - scroll_step;
+    }
+
+    if ((max_scroll > 0.0f) && (resolved_style->scrollbar_width > 0.0f))
+    {
+        track_rect = GUI_ScrollRegionTrackRect(&interaction_scope);
+        thumb_rect = GUI_ScrollRegionThumbRect(&interaction_scope, state->content_height, viewport_height, max_scroll);
+        is_track_hovered = GUI_PointInRect(context->input.mouse_position, track_rect);
+        is_thumb_hovered = GUI_PointInRect(context->input.mouse_position, thumb_rect);
+
+        if (is_track_hovered && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
+        {
+            context->active_id = id;
+            context->focused_id = id;
+
+            if (is_thumb_hovered)
+            {
+                state->drag_grab_offset_y = context->input.mouse_position.y - thumb_rect.min.y;
+            }
+            else
+            {
+                state->drag_grab_offset_y = (thumb_rect.max.y - thumb_rect.min.y) * 0.5f;
+                state->scroll_y = GUI_ScrollRegionScrollFromTrackPosition(
+                    &interaction_scope,
+                    thumb_rect,
+                    viewport_height,
+                    max_scroll,
+                    context->input.mouse_position.y
+                );
+            }
+        }
+
+        if ((context->active_id == id) && context->input.mouse_buttons[PLATFORM_MOUSE_BUTTON_LEFT])
+        {
+            state->scroll_y = GUI_ScrollRegionScrollFromTrackPosition(
+                &interaction_scope,
+                thumb_rect,
+                viewport_height,
+                max_scroll,
+                context->input.mouse_position.y
+            );
+        }
+    }
+
+    if ((context->active_id == id) && context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->active_id = 0;
+    }
+
+    can_keyboard_scroll = (context->focused_id == id) || (is_region_hovered && (context->focused_id == 0));
+
+    if (can_keyboard_scroll)
+    {
+        if (context->input.keys_pressed[PLATFORM_KEY_UP])
+        {
+            scroll_delta -= 36.0f;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_DOWN])
+        {
+            scroll_delta += 36.0f;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_PAGE_UP])
+        {
+            scroll_delta -= viewport_height * 0.9f;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_PAGE_DOWN])
+        {
+            scroll_delta += viewport_height * 0.9f;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_HOME])
+        {
+            state->scroll_y = 0.0f;
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_END])
+        {
+            state->scroll_y = max_scroll;
+        }
+    }
+
+    if (scroll_delta != 0.0f)
+    {
+        state->scroll_y += scroll_delta;
+    }
+
+    state->scroll_y = F32_Clamp(state->scroll_y, 0.0f, max_scroll);
+
+    content_rect = viewport_rect;
+    if (resolved_style->scrollbar_width > 0.0f)
+    {
+        content_rect.max.x -= resolved_style->scrollbar_width + resolved_style->scrollbar_padding;
+    }
+
+    layout_rect = content_rect;
+    layout_rect.min.y -= state->scroll_y;
+    layout_rect.max.y -= state->scroll_y;
+
+    GUI_PushClipRect(context, viewport_rect);
+    GUI_BeginLayout(context, layout_rect, GUI_LAYOUT_AXIS_VERTICAL, resolved_style->spacing);
+
+    scope = context->scroll_region_stack + context->scroll_region_stack_count;
+    context->scroll_region_stack_count += 1;
+    scope->rect = rect;
+    scope->viewport_rect = viewport_rect;
+    scope->content_rect = content_rect;
+    scope->scrollbar_track_color = resolved_style->scrollbar_track_color;
+    scope->scrollbar_thumb_color = resolved_style->scrollbar_thumb_color;
+    scope->scrollbar_thumb_hot_color = resolved_style->scrollbar_thumb_hot_color;
+    scope->scrollbar_thumb_active_color = resolved_style->scrollbar_thumb_active_color;
+    scope->scrollbar_width = resolved_style->scrollbar_width;
+    scope->scrollbar_padding = resolved_style->scrollbar_padding;
+    scope->min_thumb_height = resolved_style->min_thumb_height;
+    scope->state = state;
+}
+
+void GUI_EndScrollRegion (GUIContext *context)
+{
+    GUILayoutScope *layout_scope;
+    GUIScrollRegionScope *scope;
+    Rect2 track_rect;
+    Rect2 thumb_rect;
+    f32 content_end_y;
+    f32 content_height;
+    f32 viewport_height;
+    f32 max_scroll;
+
+    ASSERT(context != NULL);
+    ASSERT(context->scroll_region_stack_count > 0);
+    ASSERT(context->layout_stack_count > 0);
+
+    layout_scope = GUI_GetCurrentLayoutScope(context);
+    scope = context->scroll_region_stack + (context->scroll_region_stack_count - 1);
+
+    content_end_y = MAX(layout_scope->cursor.y - layout_scope->spacing, layout_scope->rect.min.y);
+    content_height = MAX(0.0f, content_end_y - layout_scope->rect.min.y);
+    viewport_height = scope->viewport_rect.max.y - scope->viewport_rect.min.y;
+    max_scroll = MAX(0.0f, content_height - viewport_height);
+    scope->state->scroll_y = F32_Clamp(scope->state->scroll_y, 0.0f, max_scroll);
+    scope->state->content_height = content_height;
+
+    GUI_EndLayout(context);
+    GUI_PopClipRect(context);
+
+    if ((max_scroll > 0.0f) && (scope->scrollbar_width > 0.0f))
+    {
+        Vec4 thumb_color;
+
+        track_rect = GUI_ScrollRegionTrackRect(scope);
+        thumb_rect = GUI_ScrollRegionThumbRect(scope, content_height, viewport_height, max_scroll);
+        thumb_color = scope->scrollbar_thumb_color;
+
+        if ((context->active_id == scope->state->id) && context->input.mouse_buttons[PLATFORM_MOUSE_BUTTON_LEFT])
+        {
+            thumb_color = scope->scrollbar_thumb_active_color;
+        }
+        else if (GUI_PointInRect(context->input.mouse_position, thumb_rect))
+        {
+            thumb_color = scope->scrollbar_thumb_hot_color;
+        }
+
+        GUI_DrawFilledRect(context, track_rect, scope->scrollbar_track_color, GUICornerRadii_All(scope->scrollbar_width * 0.5f));
+        GUI_DrawFilledRect(context, thumb_rect, thumb_color, GUICornerRadii_All(scope->scrollbar_width * 0.5f));
+    }
+
+    context->scroll_region_stack_count -= 1;
 }
 
 void GUI_Label (GUIContext *context, String text, const GUILabelStyle *style)
