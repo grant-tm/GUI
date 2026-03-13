@@ -99,14 +99,14 @@ static i32 GUI_RoundF32ToI32 (f32 value)
     return (i32) (value - 0.5f);
 }
 
-static usize GUI_GetCaretIndexFromPosition (const GUIContext *context, Rect2 rect, Vec2 padding, String text, f32 text_size, f32 mouse_x)
+static usize GUI_GetCaretIndexFromPosition (const GUIContext *context, Rect2 rect, Vec2 padding, String text, f32 text_size, f32 text_view_offset_x, f32 mouse_x)
 {
     usize index;
     f32 left_x;
     f32 prefix_width;
 
     ASSERT(context != NULL);
-    left_x = rect.min.x + padding.x;
+    left_x = rect.min.x + padding.x - text_view_offset_x;
 
     for (index = 0; index < text.count; index += 1)
     {
@@ -123,6 +123,111 @@ static usize GUI_GetCaretIndexFromPosition (const GUIContext *context, Rect2 rec
     }
 
     return text.count;
+}
+
+static b32 GUI_TextFieldIsWordByte (c8 value)
+{
+    return (((value >= '0') && (value <= '9')) ||
+            ((value >= 'A') && (value <= 'Z')) ||
+            ((value >= 'a') && (value <= 'z')) ||
+            (value == '_'));
+}
+
+static usize GUI_TextFieldFindPreviousWordBoundary (const c8 *buffer, usize length, usize index)
+{
+    usize result;
+
+    ASSERT((buffer != NULL) || (length == 0));
+    ASSERT(index <= length);
+
+    result = index;
+    while ((result > 0) && !GUI_TextFieldIsWordByte(buffer[result - 1]))
+    {
+        result -= 1;
+    }
+
+    while ((result > 0) && GUI_TextFieldIsWordByte(buffer[result - 1]))
+    {
+        result -= 1;
+    }
+
+    return result;
+}
+
+static usize GUI_TextFieldFindNextWordBoundary (const c8 *buffer, usize length, usize index)
+{
+    usize result;
+
+    ASSERT((buffer != NULL) || (length == 0));
+    ASSERT(index <= length);
+
+    result = index;
+    while ((result < length) && GUI_TextFieldIsWordByte(buffer[result]))
+    {
+        result += 1;
+    }
+
+    while ((result < length) && !GUI_TextFieldIsWordByte(buffer[result]))
+    {
+        result += 1;
+    }
+
+    return result;
+}
+
+static void GUI_TextFieldEnsureViewState (GUIContext *context, GUIID id)
+{
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+
+    if (context->text_field_view_id != id)
+    {
+        context->text_field_view_id = id;
+        context->text_field_view_offset_x = 0.0f;
+    }
+}
+
+static void GUI_TextFieldEnsureCaretVisible (
+    GUIContext *context,
+    GUIID id,
+    String text,
+    f32 text_size,
+    f32 viewport_width
+)
+{
+    f32 caret_x;
+    f32 right_margin;
+
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+
+    GUI_TextFieldEnsureViewState(context, id);
+
+    viewport_width = MAX(0.0f, viewport_width);
+    caret_x = GUI_MeasureTextWidth(context, String_Prefix(text, context->text_field_caret), text_size);
+    right_margin = MIN(12.0f, viewport_width * 0.25f);
+
+    if (caret_x < context->text_field_view_offset_x)
+    {
+        context->text_field_view_offset_x = caret_x;
+    }
+    else if (caret_x > (context->text_field_view_offset_x + viewport_width - right_margin))
+    {
+        context->text_field_view_offset_x = caret_x - viewport_width + right_margin;
+    }
+
+    context->text_field_view_offset_x = MAX(0.0f, context->text_field_view_offset_x);
+}
+
+static void GUI_TextFieldSetCaretWithModifiers (GUIContext *context, usize new_caret, b32 shift_extend)
+{
+    ASSERT(context != NULL);
+
+    context->text_field_caret = new_caret;
+    if (!shift_extend)
+    {
+        context->text_field_selection_anchor = new_caret;
+    }
 }
 
 static b32 GUI_TextFieldInsertByte (c8 *buffer, usize capacity, usize *length, usize index, c8 value)
@@ -378,6 +483,9 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
     String text;
     usize event_index;
     b32 is_hot;
+    b32 shift_extend;
+    f32 viewport_width;
+    usize range_boundary;
 
     ASSERT(context != NULL);
 
@@ -388,14 +496,47 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
     }
 
     text = String_Create(context->numeric_edit_buffer, context->numeric_edit_length);
+    viewport_width = MAX(0.0f, (rect.max.x - rect.min.x) - (padding.x * 2.0f));
+    GUI_TextFieldEnsureViewState(context, id);
     is_hot = GUI_PointInRect(context->input.mouse_position, rect);
     if (!context->numeric_edit_just_began && is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
     {
         context->focused_id = id;
-        GUI_TextFieldSetCaretAndAnchor(
-            context,
-            GUI_GetCaretIndexFromPosition(context, rect, padding, text, text_size, context->input.mouse_position.x)
-        );
+        if (GUI_WasDoubleClicked(context, id))
+        {
+            usize word_start;
+            usize word_end;
+            usize clicked_index;
+
+            clicked_index = GUI_GetCaretIndexFromPosition(
+                context,
+                rect,
+                padding,
+                text,
+                text_size,
+                context->text_field_view_offset_x,
+                context->input.mouse_position.x
+            );
+            word_start = GUI_TextFieldFindPreviousWordBoundary(context->numeric_edit_buffer, context->numeric_edit_length, clicked_index);
+            word_end = GUI_TextFieldFindNextWordBoundary(context->numeric_edit_buffer, context->numeric_edit_length, clicked_index);
+            context->text_field_selection_anchor = word_start;
+            context->text_field_caret = word_end;
+        }
+        else
+        {
+            GUI_TextFieldSetCaretAndAnchor(
+                context,
+                GUI_GetCaretIndexFromPosition(
+                    context,
+                    rect,
+                    padding,
+                    text,
+                    text_size,
+                    context->text_field_view_offset_x,
+                    context->input.mouse_position.x
+                )
+            );
+        }
     }
     else if (!context->numeric_edit_just_began && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && !is_hot)
     {
@@ -404,6 +545,7 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
     }
 
     context->numeric_edit_just_began = false;
+    shift_extend = context->input.shift_is_down;
 
     if (context->input.keys_pressed[PLATFORM_KEY_ESCAPE])
     {
@@ -419,24 +561,38 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
 
     if (context->input.keys_pressed[PLATFORM_KEY_LEFT] && (context->text_field_caret > 0))
     {
-        context->text_field_caret -= 1;
-        context->text_field_selection_anchor = context->text_field_caret;
+        if (context->input.control_is_down)
+        {
+            range_boundary = GUI_TextFieldFindPreviousWordBoundary(context->numeric_edit_buffer, context->numeric_edit_length, context->text_field_caret);
+            GUI_TextFieldSetCaretWithModifiers(context, range_boundary, shift_extend);
+        }
+        else
+        {
+            GUI_TextFieldSetCaretWithModifiers(context, context->text_field_caret - 1, shift_extend);
+        }
     }
 
     if (context->input.keys_pressed[PLATFORM_KEY_RIGHT] && (context->text_field_caret < context->numeric_edit_length))
     {
-        context->text_field_caret += 1;
-        context->text_field_selection_anchor = context->text_field_caret;
+        if (context->input.control_is_down)
+        {
+            range_boundary = GUI_TextFieldFindNextWordBoundary(context->numeric_edit_buffer, context->numeric_edit_length, context->text_field_caret);
+            GUI_TextFieldSetCaretWithModifiers(context, range_boundary, shift_extend);
+        }
+        else
+        {
+            GUI_TextFieldSetCaretWithModifiers(context, context->text_field_caret + 1, shift_extend);
+        }
     }
 
     if (context->input.keys_pressed[PLATFORM_KEY_HOME])
     {
-        GUI_TextFieldSetCaretAndAnchor(context, 0);
+        GUI_TextFieldSetCaretWithModifiers(context, 0, shift_extend);
     }
 
     if (context->input.keys_pressed[PLATFORM_KEY_END])
     {
-        GUI_TextFieldSetCaretAndAnchor(context, context->numeric_edit_length);
+        GUI_TextFieldSetCaretWithModifiers(context, context->numeric_edit_length, shift_extend);
     }
 
     if (context->input.keys_pressed[PLATFORM_KEY_BACKSPACE])
@@ -447,9 +603,21 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
         }
         else if (context->text_field_caret > 0)
         {
-            result.changed |= GUI_TextFieldDeleteByte(context->numeric_edit_buffer, &context->numeric_edit_length, context->text_field_caret - 1);
-            context->text_field_caret -= 1;
-            context->text_field_selection_anchor = context->text_field_caret;
+            if (context->input.control_is_down)
+            {
+                RangeUsize delete_range;
+
+                delete_range.min = GUI_TextFieldFindPreviousWordBoundary(context->numeric_edit_buffer, context->numeric_edit_length, context->text_field_caret);
+                delete_range.max = context->text_field_caret;
+                result.changed |= GUI_TextFieldDeleteRange(context->numeric_edit_buffer, &context->numeric_edit_length, delete_range);
+                GUI_TextFieldSetCaretAndAnchor(context, delete_range.min);
+            }
+            else
+            {
+                result.changed |= GUI_TextFieldDeleteByte(context->numeric_edit_buffer, &context->numeric_edit_length, context->text_field_caret - 1);
+                context->text_field_caret -= 1;
+                context->text_field_selection_anchor = context->text_field_caret;
+            }
         }
     }
 
@@ -461,8 +629,20 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
         }
         else if (context->text_field_caret < context->numeric_edit_length)
         {
-            result.changed |= GUI_TextFieldDeleteByte(context->numeric_edit_buffer, &context->numeric_edit_length, context->text_field_caret);
-            context->text_field_selection_anchor = context->text_field_caret;
+            if (context->input.control_is_down)
+            {
+                RangeUsize delete_range;
+
+                delete_range.min = context->text_field_caret;
+                delete_range.max = GUI_TextFieldFindNextWordBoundary(context->numeric_edit_buffer, context->numeric_edit_length, context->text_field_caret);
+                result.changed |= GUI_TextFieldDeleteRange(context->numeric_edit_buffer, &context->numeric_edit_length, delete_range);
+                GUI_TextFieldSetCaretAndAnchor(context, delete_range.min);
+            }
+            else
+            {
+                result.changed |= GUI_TextFieldDeleteByte(context->numeric_edit_buffer, &context->numeric_edit_length, context->text_field_caret);
+                context->text_field_selection_anchor = context->text_field_caret;
+            }
         }
     }
 
@@ -502,6 +682,12 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
     {
         context->text_field_caret = context->numeric_edit_length;
     }
+    if (context->text_field_selection_anchor > context->numeric_edit_length)
+    {
+        context->text_field_selection_anchor = context->numeric_edit_length;
+    }
+
+    GUI_TextFieldEnsureCaretVisible(context, id, String_Create(context->numeric_edit_buffer, context->numeric_edit_length), text_size, viewport_width);
 
     return result;
 }
@@ -517,7 +703,11 @@ static void GUI_DrawNumericEditField (GUIContext *context, Rect2 rect, Vec2 padd
     GUI_DrawStrokedRect(context, rect, border_color, border_thickness, corner_radii);
 
     text = String_Create(context->numeric_edit_buffer, context->numeric_edit_length);
+    GUI_TextFieldEnsureViewState(context, context->numeric_edit_id);
     text_position = GUI_GetTextPosition(rect, padding, text_size);
+    text_position.x -= context->text_field_view_offset_x;
+
+    GUI_PushClipRect(context, rect);
 
     if (text.count > 0)
     {
@@ -529,8 +719,8 @@ static void GUI_DrawNumericEditField (GUIContext *context, Rect2 rect, Vec2 padd
             Rect2 selection_rect;
 
             selection_range = GUI_TextFieldGetSelectionRange(context);
-            selection_min_x = rect.min.x + padding.x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.min), text_size);
-            selection_max_x = rect.min.x + padding.x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.max), text_size);
+            selection_min_x = rect.min.x + padding.x - context->text_field_view_offset_x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.min), text_size);
+            selection_max_x = rect.min.x + padding.x - context->text_field_view_offset_x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.max), text_size);
             selection_rect = Rect2_Create(selection_min_x, rect.min.y + padding.y - 1.0f, selection_max_x, rect.max.y - padding.y + 1.0f);
             GUI_DrawFilledRect(context, selection_rect, GUIColor_Create(0.24f, 0.68f, 0.98f, 0.35f), GUICornerRadii_All(2.0f));
         }
@@ -542,10 +732,12 @@ static void GUI_DrawNumericEditField (GUIContext *context, Rect2 rect, Vec2 padd
         f32 caret_x;
         Rect2 caret_rect;
 
-        caret_x = rect.min.x + padding.x + GUI_MeasureTextWidth(context, String_Create(context->numeric_edit_buffer, context->text_field_caret), text_size);
+        caret_x = rect.min.x + padding.x - context->text_field_view_offset_x + GUI_MeasureTextWidth(context, String_Create(context->numeric_edit_buffer, context->text_field_caret), text_size);
         caret_rect = Rect2_Create(caret_x, rect.min.y + padding.y - 1.0f, caret_x + 1.5f, rect.max.y - padding.y + 1.0f);
         GUI_DrawFilledRect(context, caret_rect, text_color, GUICornerRadii_All(0.0f));
     }
+
+    GUI_PopClipRect(context);
 }
 
 static GUIScrollRegionState *GUI_GetOrCreateScrollRegionState (GUIContext *context, GUIID id)
@@ -3294,6 +3486,8 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
     b32 changed;
     b32 shift_extend;
     usize event_index;
+    f32 viewport_width;
+    usize range_boundary;
 
     ASSERT(context != NULL);
     ASSERT(buffer != NULL);
@@ -3313,6 +3507,8 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
 
     rect = GUI_LayoutNextRect(context, Vec2_Create(0.0f, resolved_style->height));
     text = String_Create(buffer, *length);
+    viewport_width = MAX(0.0f, (rect.max.x - rect.min.x) - (resolved_style->padding.x * 2.0f));
+    GUI_TextFieldEnsureViewState(context, id);
     is_hot = GUI_IsHot(context, id, rect);
     is_focused = context->focused_id == id;
     changed = false;
@@ -3321,10 +3517,41 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
     {
         context->active_id = id;
         context->focused_id = id;
-        GUI_TextFieldSetCaretAndAnchor(
-            context,
-            GUI_GetCaretIndexFromPosition(context, rect, resolved_style->padding, text, resolved_style->text_size, context->input.mouse_position.x)
-        );
+        if (GUI_WasDoubleClicked(context, id))
+        {
+            usize word_start;
+            usize word_end;
+            usize clicked_index;
+
+            clicked_index = GUI_GetCaretIndexFromPosition(
+                context,
+                rect,
+                resolved_style->padding,
+                text,
+                resolved_style->text_size,
+                context->text_field_view_offset_x,
+                context->input.mouse_position.x
+            );
+            word_start = GUI_TextFieldFindPreviousWordBoundary(buffer, *length, clicked_index);
+            word_end = GUI_TextFieldFindNextWordBoundary(buffer, *length, clicked_index);
+            context->text_field_selection_anchor = word_start;
+            context->text_field_caret = word_end;
+        }
+        else
+        {
+            GUI_TextFieldSetCaretAndAnchor(
+                context,
+                GUI_GetCaretIndexFromPosition(
+                    context,
+                    rect,
+                    resolved_style->padding,
+                    text,
+                    resolved_style->text_size,
+                    context->text_field_view_offset_x,
+                    context->input.mouse_position.x
+                )
+            );
+        }
         is_focused = true;
     }
     else if (context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && !is_hot && is_focused)
@@ -3340,7 +3567,15 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
 
     if ((context->active_id == id) && context->input.mouse_buttons[PLATFORM_MOUSE_BUTTON_LEFT])
     {
-        context->text_field_caret = GUI_GetCaretIndexFromPosition(context, rect, resolved_style->padding, text, resolved_style->text_size, context->input.mouse_position.x);
+        context->text_field_caret = GUI_GetCaretIndexFromPosition(
+            context,
+            rect,
+            resolved_style->padding,
+            text,
+            resolved_style->text_size,
+            context->text_field_view_offset_x,
+            context->input.mouse_position.x
+        );
     }
 
     if (is_focused)
@@ -3349,38 +3584,38 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
 
         if (context->input.keys_pressed[PLATFORM_KEY_LEFT] && (context->text_field_caret > 0))
         {
-            context->text_field_caret -= 1;
-            if (!shift_extend)
+            if (context->input.control_is_down)
             {
-                context->text_field_selection_anchor = context->text_field_caret;
+                range_boundary = GUI_TextFieldFindPreviousWordBoundary(buffer, *length, context->text_field_caret);
+                GUI_TextFieldSetCaretWithModifiers(context, range_boundary, shift_extend);
+            }
+            else
+            {
+                GUI_TextFieldSetCaretWithModifiers(context, context->text_field_caret - 1, shift_extend);
             }
         }
 
         if (context->input.keys_pressed[PLATFORM_KEY_RIGHT] && (context->text_field_caret < *length))
         {
-            context->text_field_caret += 1;
-            if (!shift_extend)
+            if (context->input.control_is_down)
             {
-                context->text_field_selection_anchor = context->text_field_caret;
+                range_boundary = GUI_TextFieldFindNextWordBoundary(buffer, *length, context->text_field_caret);
+                GUI_TextFieldSetCaretWithModifiers(context, range_boundary, shift_extend);
+            }
+            else
+            {
+                GUI_TextFieldSetCaretWithModifiers(context, context->text_field_caret + 1, shift_extend);
             }
         }
 
         if (context->input.keys_pressed[PLATFORM_KEY_HOME])
         {
-            context->text_field_caret = 0;
-            if (!shift_extend)
-            {
-                context->text_field_selection_anchor = 0;
-            }
+            GUI_TextFieldSetCaretWithModifiers(context, 0, shift_extend);
         }
 
         if (context->input.keys_pressed[PLATFORM_KEY_END])
         {
-            context->text_field_caret = *length;
-            if (!shift_extend)
-            {
-                context->text_field_selection_anchor = context->text_field_caret;
-            }
+            GUI_TextFieldSetCaretWithModifiers(context, *length, shift_extend);
         }
 
         if (context->input.keys_pressed[PLATFORM_KEY_BACKSPACE])
@@ -3391,9 +3626,21 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
             }
             else if (context->text_field_caret > 0)
             {
-                changed |= GUI_TextFieldDeleteByte(buffer, length, context->text_field_caret - 1);
-                context->text_field_caret -= 1;
-                context->text_field_selection_anchor = context->text_field_caret;
+                if (context->input.control_is_down)
+                {
+                    RangeUsize delete_range;
+
+                    delete_range.min = GUI_TextFieldFindPreviousWordBoundary(buffer, *length, context->text_field_caret);
+                    delete_range.max = context->text_field_caret;
+                    changed |= GUI_TextFieldDeleteRange(buffer, length, delete_range);
+                    GUI_TextFieldSetCaretAndAnchor(context, delete_range.min);
+                }
+                else
+                {
+                    changed |= GUI_TextFieldDeleteByte(buffer, length, context->text_field_caret - 1);
+                    context->text_field_caret -= 1;
+                    context->text_field_selection_anchor = context->text_field_caret;
+                }
             }
         }
 
@@ -3405,8 +3652,20 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
             }
             else if (context->text_field_caret < *length)
             {
-                changed |= GUI_TextFieldDeleteByte(buffer, length, context->text_field_caret);
-                context->text_field_selection_anchor = context->text_field_caret;
+                if (context->input.control_is_down)
+                {
+                    RangeUsize delete_range;
+
+                    delete_range.min = context->text_field_caret;
+                    delete_range.max = GUI_TextFieldFindNextWordBoundary(buffer, *length, context->text_field_caret);
+                    changed |= GUI_TextFieldDeleteRange(buffer, length, delete_range);
+                    GUI_TextFieldSetCaretAndAnchor(context, delete_range.min);
+                }
+                else
+                {
+                    changed |= GUI_TextFieldDeleteByte(buffer, length, context->text_field_caret);
+                    context->text_field_selection_anchor = context->text_field_caret;
+                }
             }
         }
 
@@ -3491,6 +3750,14 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
     {
         context->text_field_caret = *length;
     }
+    if (is_focused && (context->text_field_selection_anchor > *length))
+    {
+        context->text_field_selection_anchor = *length;
+    }
+    if (is_focused)
+    {
+        GUI_TextFieldEnsureCaretVisible(context, id, String_Create(buffer, *length), resolved_style->text_size, viewport_width);
+    }
 
     background_color = resolved_style->background_color;
     if (is_focused)
@@ -3507,6 +3774,8 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
 
     text = String_Create(buffer, *length);
     text_position = GUI_GetTextPosition(rect, resolved_style->padding, resolved_style->text_size);
+    text_position.x -= context->text_field_view_offset_x;
+    GUI_PushClipRect(context, rect);
     if (text.count > 0)
     {
         if (is_focused && GUI_TextFieldHasSelection(context))
@@ -3517,8 +3786,8 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
             Rect2 selection_rect;
 
             selection_range = GUI_TextFieldGetSelectionRange(context);
-            selection_min_x = rect.min.x + resolved_style->padding.x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.min), resolved_style->text_size);
-            selection_max_x = rect.min.x + resolved_style->padding.x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.max), resolved_style->text_size);
+            selection_min_x = rect.min.x + resolved_style->padding.x - context->text_field_view_offset_x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.min), resolved_style->text_size);
+            selection_max_x = rect.min.x + resolved_style->padding.x - context->text_field_view_offset_x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.max), resolved_style->text_size);
             selection_rect = Rect2_Create(
                 selection_min_x,
                 rect.min.y + resolved_style->padding.y - 1.0f,
@@ -3540,7 +3809,7 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
         f32 caret_x;
         Rect2 caret_rect;
 
-        caret_x = rect.min.x + resolved_style->padding.x + GUI_MeasureTextWidth(context, String_Create(buffer, context->text_field_caret), resolved_style->text_size);
+        caret_x = rect.min.x + resolved_style->padding.x - context->text_field_view_offset_x + GUI_MeasureTextWidth(context, String_Create(buffer, context->text_field_caret), resolved_style->text_size);
         caret_rect = Rect2_Create(
             caret_x,
             rect.min.y + resolved_style->padding.y - 1.0f,
@@ -3549,6 +3818,7 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
         );
         GUI_DrawFilledRect(context, caret_rect, resolved_style->caret_color, GUICornerRadii_All(0.0f));
     }
+    GUI_PopClipRect(context);
 
     return changed;
 }
