@@ -1692,6 +1692,12 @@ static GUISelectableRowResult GUI_SelectableRowBegin (
         context->focused_id = id;
         result.is_focused = true;
         result.pressed = true;
+
+        if (GUI_WasDoubleClicked(context, id))
+        {
+            result.activated = true;
+            context->active_id = 0;
+        }
     }
     else if (was_pressed && !result.is_hot && result.is_focused)
     {
