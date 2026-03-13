@@ -389,7 +389,6 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
 
     text = String_Create(context->numeric_edit_buffer, context->numeric_edit_length);
     is_hot = GUI_PointInRect(context->input.mouse_position, rect);
-
     if (!context->numeric_edit_just_began && is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
     {
         context->focused_id = id;
@@ -2883,7 +2882,7 @@ b32 GUI_TextField (GUIContext *context, GUIID id, c8 *buffer, usize capacity, us
         }
     }
 
-    if (context->text_field_caret > *length)
+    if (is_focused && (context->text_field_caret > *length))
     {
         context->text_field_caret = *length;
     }
