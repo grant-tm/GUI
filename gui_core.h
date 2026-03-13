@@ -146,6 +146,7 @@ typedef struct GUIInputState
     b32 mouse_buttons[PLATFORM_MOUSE_BUTTON_COUNT];
     b32 mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_COUNT];
     b32 mouse_buttons_released[PLATFORM_MOUSE_BUTTON_COUNT];
+    Nanoseconds mouse_button_press_timestamps[PLATFORM_MOUSE_BUTTON_COUNT];
     b32 shift_is_down;
     b32 control_is_down;
     b32 alt_is_down;
@@ -226,10 +227,19 @@ typedef struct GUIContext
     GUIID hot_id;
     GUIID active_id;
     GUIID focused_id;
+    GUIID last_clicked_id;
+    Nanoseconds last_click_timestamp;
     GUIID drag_origin_id;
     Vec2 drag_origin_mouse_position;
     f32 drag_origin_value;
     b32 drag_origin_control_is_down;
+    GUIID numeric_edit_id;
+    b32 numeric_edit_is_integer;
+    b32 numeric_edit_just_began;
+    c8 numeric_edit_buffer[64];
+    usize numeric_edit_length;
+    f32 numeric_edit_original_f32;
+    i32 numeric_edit_original_i32;
     usize text_field_caret;
     usize text_field_selection_anchor;
     GUITextMeasureFunction *text_measure_function;

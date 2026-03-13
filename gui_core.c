@@ -232,6 +232,7 @@ void GUI_SubmitPlatformInput (GUIContext *context, const PlatformEventBuffer *ev
                 (event->data.mouse_button.button < PLATFORM_MOUSE_BUTTON_COUNT))
             {
                 context->input.mouse_buttons_pressed[event->data.mouse_button.button] = true;
+                context->input.mouse_button_press_timestamps[event->data.mouse_button.button] = event->timestamp;
             }
         }
         else if (event->type == PLATFORM_EVENT_MOUSE_BUTTON_UP)

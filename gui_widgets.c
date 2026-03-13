@@ -1,6 +1,7 @@
 #include "gui_widgets.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 static GUIID GUI_DeriveID (GUIID id, u64 salt)
 {
@@ -243,6 +244,303 @@ static b32 GUI_TextFieldDeleteSelection (GUIContext *context, c8 *buffer, usize 
     changed = GUI_TextFieldDeleteRange(buffer, length, range);
     GUI_TextFieldSetCaretAndAnchor(context, range.min);
     return changed;
+}
+
+static b32 GUI_WasDoubleClicked (GUIContext *context, GUIID id)
+{
+    Nanoseconds click_timestamp;
+    Nanoseconds double_click_threshold;
+
+    ASSERT(context != NULL);
+    double_click_threshold = 500 * NANOSECONDS_PER_MILLISECOND;
+
+    if (!context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        return false;
+    }
+
+    click_timestamp = context->input.mouse_button_press_timestamps[PLATFORM_MOUSE_BUTTON_LEFT];
+    if (click_timestamp == 0)
+    {
+        context->last_clicked_id = 0;
+        context->last_click_timestamp = 0;
+        return false;
+    }
+    if ((context->last_clicked_id == id) &&
+        (click_timestamp >= context->last_click_timestamp) &&
+        ((click_timestamp - context->last_click_timestamp) <= double_click_threshold))
+    {
+        context->last_clicked_id = 0;
+        context->last_click_timestamp = 0;
+        return true;
+    }
+
+    context->last_clicked_id = id;
+    context->last_click_timestamp = click_timestamp;
+    return false;
+}
+
+static void GUI_NumericEditBegin (GUIContext *context, GUIID id, String initial_text, b32 is_integer, f32 original_f32, i32 original_i32)
+{
+    usize copy_count;
+
+    ASSERT(context != NULL);
+
+    copy_count = MIN(initial_text.count, ARRAY_COUNT(context->numeric_edit_buffer) - 1);
+    Memory_ZeroArray(context->numeric_edit_buffer, ARRAY_COUNT(context->numeric_edit_buffer));
+    if (copy_count > 0)
+    {
+        Memory_Copy(context->numeric_edit_buffer, initial_text.data, copy_count);
+    }
+
+    context->numeric_edit_buffer[copy_count] = 0;
+    context->numeric_edit_id = id;
+    context->numeric_edit_is_integer = is_integer;
+    context->numeric_edit_just_began = true;
+    context->numeric_edit_length = copy_count;
+    context->numeric_edit_original_f32 = original_f32;
+    context->numeric_edit_original_i32 = original_i32;
+    context->focused_id = id;
+    context->active_id = 0;
+    context->text_field_selection_anchor = 0;
+    context->text_field_caret = copy_count;
+}
+
+static void GUI_NumericEditEnd (GUIContext *context)
+{
+    ASSERT(context != NULL);
+    context->numeric_edit_id = 0;
+    context->numeric_edit_is_integer = false;
+    context->numeric_edit_just_began = false;
+    context->numeric_edit_length = 0;
+}
+
+static b32 GUI_NumericEditParseF32 (GUIContext *context, f32 *out_value)
+{
+    c8 parse_buffer[64];
+    c8 *end;
+    f32 value;
+
+    ASSERT(context != NULL);
+    ASSERT(out_value != NULL);
+
+    Memory_ZeroArray(parse_buffer, ARRAY_COUNT(parse_buffer));
+    if (context->numeric_edit_length > 0)
+    {
+        Memory_Copy(parse_buffer, context->numeric_edit_buffer, context->numeric_edit_length);
+    }
+
+    value = strtof(parse_buffer, &end);
+    if ((end == parse_buffer) || (*end != 0))
+    {
+        return false;
+    }
+
+    *out_value = value;
+    return true;
+}
+
+static b32 GUI_NumericEditParseI32 (GUIContext *context, i32 *out_value)
+{
+    c8 parse_buffer[64];
+    c8 *end;
+    long value;
+
+    ASSERT(context != NULL);
+    ASSERT(out_value != NULL);
+
+    Memory_ZeroArray(parse_buffer, ARRAY_COUNT(parse_buffer));
+    if (context->numeric_edit_length > 0)
+    {
+        Memory_Copy(parse_buffer, context->numeric_edit_buffer, context->numeric_edit_length);
+    }
+
+    value = strtol(parse_buffer, &end, 10);
+    if ((end == parse_buffer) || (*end != 0))
+    {
+        return false;
+    }
+
+    *out_value = (i32) value;
+    return true;
+}
+
+typedef struct GUINumericEditResult
+{
+    b32 changed;
+    b32 canceled;
+    b32 committed;
+} GUINumericEditResult;
+
+static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID id, Rect2 rect, Vec2 padding, f32 text_size)
+{
+    GUINumericEditResult result;
+    String text;
+    usize event_index;
+    b32 is_hot;
+
+    ASSERT(context != NULL);
+
+    Memory_ZeroStruct(&result);
+    if (context->numeric_edit_id != id)
+    {
+        return result;
+    }
+
+    text = String_Create(context->numeric_edit_buffer, context->numeric_edit_length);
+    is_hot = GUI_PointInRect(context->input.mouse_position, rect);
+
+    if (!context->numeric_edit_just_began && is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->focused_id = id;
+        GUI_TextFieldSetCaretAndAnchor(
+            context,
+            GUI_GetCaretIndexFromPosition(context, rect, padding, text, text_size, context->input.mouse_position.x)
+        );
+    }
+    else if (!context->numeric_edit_just_began && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && !is_hot)
+    {
+        result.committed = true;
+        return result;
+    }
+
+    context->numeric_edit_just_began = false;
+
+    if (context->input.keys_pressed[PLATFORM_KEY_ESCAPE])
+    {
+        result.canceled = true;
+        return result;
+    }
+
+    if (context->input.keys_pressed[PLATFORM_KEY_ENTER])
+    {
+        result.committed = true;
+        return result;
+    }
+
+    if (context->input.keys_pressed[PLATFORM_KEY_LEFT] && (context->text_field_caret > 0))
+    {
+        context->text_field_caret -= 1;
+        context->text_field_selection_anchor = context->text_field_caret;
+    }
+
+    if (context->input.keys_pressed[PLATFORM_KEY_RIGHT] && (context->text_field_caret < context->numeric_edit_length))
+    {
+        context->text_field_caret += 1;
+        context->text_field_selection_anchor = context->text_field_caret;
+    }
+
+    if (context->input.keys_pressed[PLATFORM_KEY_HOME])
+    {
+        GUI_TextFieldSetCaretAndAnchor(context, 0);
+    }
+
+    if (context->input.keys_pressed[PLATFORM_KEY_END])
+    {
+        GUI_TextFieldSetCaretAndAnchor(context, context->numeric_edit_length);
+    }
+
+    if (context->input.keys_pressed[PLATFORM_KEY_BACKSPACE])
+    {
+        if (GUI_TextFieldHasSelection(context))
+        {
+            result.changed |= GUI_TextFieldDeleteSelection(context, context->numeric_edit_buffer, &context->numeric_edit_length);
+        }
+        else if (context->text_field_caret > 0)
+        {
+            result.changed |= GUI_TextFieldDeleteByte(context->numeric_edit_buffer, &context->numeric_edit_length, context->text_field_caret - 1);
+            context->text_field_caret -= 1;
+            context->text_field_selection_anchor = context->text_field_caret;
+        }
+    }
+
+    if (context->input.keys_pressed[PLATFORM_KEY_DELETE])
+    {
+        if (GUI_TextFieldHasSelection(context))
+        {
+            result.changed |= GUI_TextFieldDeleteSelection(context, context->numeric_edit_buffer, &context->numeric_edit_length);
+        }
+        else if (context->text_field_caret < context->numeric_edit_length)
+        {
+            result.changed |= GUI_TextFieldDeleteByte(context->numeric_edit_buffer, &context->numeric_edit_length, context->text_field_caret);
+            context->text_field_selection_anchor = context->text_field_caret;
+        }
+    }
+
+    for (event_index = 0; event_index < context->input.text_input_codepoint_count; event_index += 1)
+    {
+        u32 codepoint;
+        b32 is_valid_numeric_char;
+
+        codepoint = context->input.text_input_codepoints[event_index];
+        is_valid_numeric_char = ((codepoint >= '0') && (codepoint <= '9')) || (codepoint == '-') ||
+            (!context->numeric_edit_is_integer && ((codepoint == '.') || (codepoint == 'e') || (codepoint == 'E') || (codepoint == '+')));
+        if (!is_valid_numeric_char)
+        {
+            continue;
+        }
+
+        if (GUI_TextFieldHasSelection(context))
+        {
+            result.changed |= GUI_TextFieldDeleteSelection(context, context->numeric_edit_buffer, &context->numeric_edit_length);
+        }
+
+        if (GUI_TextFieldInsertByte(context->numeric_edit_buffer, ARRAY_COUNT(context->numeric_edit_buffer), &context->numeric_edit_length, context->text_field_caret, (c8) codepoint))
+        {
+            context->text_field_caret += 1;
+            context->text_field_selection_anchor = context->text_field_caret;
+            result.changed = true;
+        }
+    }
+
+    if (context->text_field_caret > context->numeric_edit_length)
+    {
+        context->text_field_caret = context->numeric_edit_length;
+    }
+
+    return result;
+}
+
+static void GUI_DrawNumericEditField (GUIContext *context, Rect2 rect, Vec2 padding, f32 text_size, Vec4 background_color, Vec4 border_color, GUIEdgeThickness border_thickness, GUICornerRadii corner_radii, Vec4 text_color)
+{
+    String text;
+    Vec2 text_position;
+
+    ASSERT(context != NULL);
+
+    GUI_DrawFilledRect(context, rect, background_color, corner_radii);
+    GUI_DrawStrokedRect(context, rect, border_color, border_thickness, corner_radii);
+
+    text = String_Create(context->numeric_edit_buffer, context->numeric_edit_length);
+    text_position = GUI_GetTextPosition(rect, padding, text_size);
+
+    if (text.count > 0)
+    {
+        if (GUI_TextFieldHasSelection(context))
+        {
+            RangeUsize selection_range;
+            f32 selection_min_x;
+            f32 selection_max_x;
+            Rect2 selection_rect;
+
+            selection_range = GUI_TextFieldGetSelectionRange(context);
+            selection_min_x = rect.min.x + padding.x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.min), text_size);
+            selection_max_x = rect.min.x + padding.x + GUI_MeasureTextWidth(context, String_Prefix(text, selection_range.max), text_size);
+            selection_rect = Rect2_Create(selection_min_x, rect.min.y + padding.y - 1.0f, selection_max_x, rect.max.y - padding.y + 1.0f);
+            GUI_DrawFilledRect(context, selection_rect, GUIColor_Create(0.24f, 0.68f, 0.98f, 0.35f), GUICornerRadii_All(2.0f));
+        }
+
+        GUI_DrawText(context, text_position, text, text_color, text_size);
+    }
+
+    {
+        f32 caret_x;
+        Rect2 caret_rect;
+
+        caret_x = rect.min.x + padding.x + GUI_MeasureTextWidth(context, String_Create(context->numeric_edit_buffer, context->text_field_caret), text_size);
+        caret_rect = Rect2_Create(caret_x, rect.min.y + padding.y - 1.0f, caret_x + 1.5f, rect.max.y - padding.y + 1.0f);
+        GUI_DrawFilledRect(context, caret_rect, text_color, GUICornerRadii_All(0.0f));
+    }
 }
 
 static GUIScrollRegionState *GUI_GetOrCreateScrollRegionState (GUIContext *context, GUIID id)
@@ -1592,6 +1890,50 @@ b32 GUI_DragF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32 ma
     is_focused = context->focused_id == id;
     changed = false;
 
+    if (is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && GUI_WasDoubleClicked(context, id))
+    {
+        GUI_NumericEditBegin(context, id, GUI_FormatF32(context->frame_arena, *value, resolved_style->precision), false, *value, 0);
+    }
+
+    if (context->numeric_edit_id == id)
+    {
+        GUINumericEditResult edit_result;
+
+        edit_result = GUI_NumericEditTextField(context, id, rect, resolved_style->padding, resolved_style->text_size);
+        if (edit_result.committed)
+        {
+            f32 parsed_value;
+            f32 parsed_clamped_value;
+
+            if (GUI_NumericEditParseF32(context, &parsed_value))
+            {
+                parsed_clamped_value = GUI_ClampToRange(parsed_value, min_value, max_value);
+                if (parsed_clamped_value != *value)
+                {
+                    *value = parsed_clamped_value;
+                    changed = true;
+                }
+            }
+        }
+        if (edit_result.committed || edit_result.canceled)
+        {
+            GUI_NumericEditEnd(context);
+        }
+
+        GUI_DrawNumericEditField(
+            context,
+            rect,
+            resolved_style->padding,
+            resolved_style->text_size,
+            resolved_style->active_color,
+            resolved_style->border_color,
+            resolved_style->border_thickness,
+            resolved_style->corner_radii,
+            resolved_style->text_color
+        );
+        return changed;
+    }
+
     if (is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
     {
         context->active_id = id;
@@ -1762,6 +2104,52 @@ b32 GUI_SpinBoxF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32
     is_focused = context->focused_id == id;
     changed = false;
 
+    if (GUI_PointInRect(context->input.mouse_position, rect) &&
+        context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] &&
+        GUI_WasDoubleClicked(context, id))
+    {
+        GUI_NumericEditBegin(context, id, GUI_FormatF32(context->frame_arena, *value, resolved_style->precision), false, *value, 0);
+    }
+
+    if (context->numeric_edit_id == id)
+    {
+        GUINumericEditResult edit_result;
+
+        edit_result = GUI_NumericEditTextField(context, id, rect, resolved_style->padding, resolved_style->text_size);
+        if (edit_result.committed)
+        {
+            f32 parsed_value;
+            f32 parsed_clamped_value;
+
+            if (GUI_NumericEditParseF32(context, &parsed_value))
+            {
+                parsed_clamped_value = GUI_ClampToRange(parsed_value, min_value, max_value);
+                if (parsed_clamped_value != *value)
+                {
+                    *value = parsed_clamped_value;
+                    changed = true;
+                }
+            }
+        }
+        if (edit_result.committed || edit_result.canceled)
+        {
+            GUI_NumericEditEnd(context);
+        }
+
+        GUI_DrawNumericEditField(
+            context,
+            rect,
+            resolved_style->padding,
+            resolved_style->text_size,
+            resolved_style->background_color,
+            resolved_style->border_color,
+            resolved_style->border_thickness,
+            resolved_style->corner_radii,
+            resolved_style->text_color
+        );
+        return changed;
+    }
+
     if ((decrement_hot || increment_hot) && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
     {
         context->active_id = decrement_hot ? decrement_id : increment_id;
@@ -1903,6 +2291,49 @@ b32 GUI_DragI32 (GUIContext *context, GUIID id, f32 width, i32 min_value, i32 ma
     is_hot = GUI_IsHot(context, id, rect);
     is_focused = context->focused_id == id;
     changed = false;
+
+    if (is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && GUI_WasDoubleClicked(context, id))
+    {
+        GUI_NumericEditBegin(context, id, GUI_FormatI32(context->frame_arena, *value), true, 0.0f, *value);
+    }
+
+    if (context->numeric_edit_id == id)
+    {
+        GUINumericEditResult edit_result;
+
+        edit_result = GUI_NumericEditTextField(context, id, rect, resolved_style->padding, resolved_style->text_size);
+        if (edit_result.committed)
+        {
+            i32 parsed_value;
+
+            if (GUI_NumericEditParseI32(context, &parsed_value))
+            {
+                clamped_value = I32_Clamp(parsed_value, min_value, max_value);
+                if (clamped_value != *value)
+                {
+                    *value = clamped_value;
+                    changed = true;
+                }
+            }
+        }
+        if (edit_result.committed || edit_result.canceled)
+        {
+            GUI_NumericEditEnd(context);
+        }
+
+        GUI_DrawNumericEditField(
+            context,
+            rect,
+            resolved_style->padding,
+            resolved_style->text_size,
+            resolved_style->active_color,
+            resolved_style->border_color,
+            resolved_style->border_thickness,
+            resolved_style->corner_radii,
+            resolved_style->text_color
+        );
+        return changed;
+    }
 
     if (is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
     {
@@ -2079,6 +2510,51 @@ b32 GUI_SpinBoxI32 (GUIContext *context, GUIID id, f32 width, i32 min_value, i32
     increment_hot = GUI_IsHot(context, increment_id, increment_rect);
     is_focused = context->focused_id == id;
     changed = false;
+
+    if (GUI_PointInRect(context->input.mouse_position, rect) &&
+        context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] &&
+        GUI_WasDoubleClicked(context, id))
+    {
+        GUI_NumericEditBegin(context, id, GUI_FormatI32(context->frame_arena, *value), true, 0.0f, *value);
+    }
+
+    if (context->numeric_edit_id == id)
+    {
+        GUINumericEditResult edit_result;
+
+        edit_result = GUI_NumericEditTextField(context, id, rect, resolved_style->padding, resolved_style->text_size);
+        if (edit_result.committed)
+        {
+            i32 parsed_value;
+
+            if (GUI_NumericEditParseI32(context, &parsed_value))
+            {
+                clamped_value = I32_Clamp(parsed_value, min_value, max_value);
+                if (clamped_value != *value)
+                {
+                    *value = clamped_value;
+                    changed = true;
+                }
+            }
+        }
+        if (edit_result.committed || edit_result.canceled)
+        {
+            GUI_NumericEditEnd(context);
+        }
+
+        GUI_DrawNumericEditField(
+            context,
+            rect,
+            resolved_style->padding,
+            resolved_style->text_size,
+            resolved_style->background_color,
+            resolved_style->border_color,
+            resolved_style->border_thickness,
+            resolved_style->corner_radii,
+            resolved_style->text_color
+        );
+        return changed;
+    }
 
     if ((decrement_hot || increment_hot) && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
     {
