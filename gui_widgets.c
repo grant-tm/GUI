@@ -1641,22 +1641,34 @@ b32 GUI_ButtonAuto (GUIContext *context, GUIID id, String text, const GUIButtonS
     return GUI_Button(context, id, text, measured_size.x, style);
 }
 
-b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b32 is_selected, const GUISelectableRowStyle *style)
+typedef struct GUISelectableRowResult
 {
-    GUISelectableRowStyle default_style;
-    const GUISelectableRowStyle *resolved_style;
     Rect2 rect;
-    Vec2 text_position;
-    Vec4 background_color;
-    Vec4 text_color;
     b32 is_hot;
     b32 is_focused;
+    b32 pressed;
+    b32 activated;
+} GUISelectableRowResult;
+
+static GUISelectableRowResult GUI_SelectableRowBegin (
+    GUIContext *context,
+    GUIID id,
+    f32 width,
+    const GUISelectableRowStyle *style,
+    const GUISelectableRowStyle **out_resolved_style
+)
+{
+    GUISelectableRowResult result;
+    GUISelectableRowStyle default_style;
+    const GUISelectableRowStyle *resolved_style;
     b32 was_pressed;
     b32 was_released;
-    b32 activated;
 
     ASSERT(context != NULL);
     ASSERT(id != 0);
+    ASSERT(out_resolved_style != NULL);
+
+    Memory_ZeroStruct(&result);
 
     if (style == NULL)
     {
@@ -1668,39 +1680,61 @@ b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b3
         resolved_style = style;
     }
 
-    rect = GUI_LayoutNextRect(context, Vec2_Create(width, resolved_style->height));
-    is_hot = GUI_IsHot(context, id, rect);
-    is_focused = context->focused_id == id;
+    result.rect = GUI_LayoutNextRect(context, Vec2_Create(width, resolved_style->height));
+    result.is_hot = GUI_IsHot(context, id, result.rect);
+    result.is_focused = context->focused_id == id;
     was_pressed = context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT];
     was_released = context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT];
-    activated = false;
 
-    if (is_hot && was_pressed)
+    if (result.is_hot && was_pressed)
     {
         context->active_id = id;
         context->focused_id = id;
-        is_focused = true;
+        result.is_focused = true;
+        result.pressed = true;
     }
-    else if (was_pressed && !is_hot && is_focused)
+    else if (was_pressed && !result.is_hot && result.is_focused)
     {
         context->focused_id = 0;
-        is_focused = false;
+        result.is_focused = false;
     }
 
     if ((context->active_id == id) && was_released)
     {
-        if (is_hot)
+        if (result.is_hot)
         {
-            activated = true;
+            result.activated = true;
         }
 
         context->active_id = 0;
     }
 
-    if (is_focused && (context->input.keys_pressed[PLATFORM_KEY_ENTER] || context->input.keys_pressed[PLATFORM_KEY_SPACE]))
+    if (result.is_focused && (context->input.keys_pressed[PLATFORM_KEY_ENTER] || context->input.keys_pressed[PLATFORM_KEY_SPACE]))
     {
-        activated = true;
+        result.activated = true;
     }
+
+    *out_resolved_style = resolved_style;
+    return result;
+}
+
+static void GUI_SelectableRowDraw (
+    GUIContext *context,
+    const GUISelectableRowResult *row,
+    GUIID id,
+    String text,
+    b32 is_selected,
+    const GUISelectableRowStyle *resolved_style
+)
+{
+    Vec2 text_position;
+    Vec4 background_color;
+    Vec4 text_color;
+
+    ASSERT(context != NULL);
+    ASSERT(row != NULL);
+    ASSERT(id != 0);
+    ASSERT(resolved_style != NULL);
 
     background_color = resolved_style->background_color;
     text_color = resolved_style->text_color;
@@ -1715,17 +1749,26 @@ b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b3
     {
         background_color = is_selected ? resolved_style->selected_active_color : resolved_style->active_color;
     }
-    else if (is_hot)
+    else if (row->is_hot)
     {
         background_color = is_selected ? resolved_style->selected_hot_color : resolved_style->hot_color;
     }
 
-    GUI_DrawFilledRect(context, rect, background_color, resolved_style->corner_radii);
-    GUI_DrawStrokedRect(context, rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
-    text_position = GUI_GetTextPositionCenteredY(rect, resolved_style->text_size);
-    text_position.x = rect.min.x + resolved_style->padding.x;
+    GUI_DrawFilledRect(context, row->rect, background_color, resolved_style->corner_radii);
+    GUI_DrawStrokedRect(context, row->rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+    text_position = GUI_GetTextPositionCenteredY(row->rect, resolved_style->text_size);
+    text_position.x = row->rect.min.x + resolved_style->padding.x;
     GUI_DrawText(context, text_position, text, text_color, resolved_style->text_size);
-    return activated;
+}
+
+b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b32 is_selected, const GUISelectableRowStyle *style)
+{
+    GUISelectableRowResult row;
+    const GUISelectableRowStyle *resolved_style;
+
+    row = GUI_SelectableRowBegin(context, id, width, style, &resolved_style);
+    GUI_SelectableRowDraw(context, &row, id, text, is_selected, resolved_style);
+    return row.activated;
 }
 
 b32 GUI_ListBox (
@@ -1748,6 +1791,9 @@ b32 GUI_ListBox (
     i32 activated_index;
     usize item_index;
     b32 selection_changed;
+    GUISelectableRowResult row;
+    GUIID row_id;
+    GUISelectionCommand command;
 
     ASSERT(context != NULL);
     ASSERT(id != 0);
@@ -1773,31 +1819,29 @@ b32 GUI_ListBox (
     GUI_BeginScrollRegion(context, id, rect, &resolved_style->scroll_region_style);
     for (item_index = 0; item_index < item_count; item_index += 1)
     {
-        if (GUI_SelectableRow(
-            context,
-            GUI_DeriveID(id, (u64) item_index + 1u),
-            items[item_index],
-            0.0f,
-            selected_items[item_index],
-            &resolved_style->row_style
-        ))
+        const GUISelectableRowStyle *resolved_row_style;
+
+        row_id = GUI_DeriveID(id, (u64) item_index + 1u);
+        row = GUI_SelectableRowBegin(context, row_id, 0.0f, &resolved_style->row_style, &resolved_row_style);
+
+        if (row.pressed)
+        {
+            command = GUI_BuildSelectionCommand(context, true, (i32) item_index, *anchor_index, allow_multi_select);
+            selection_changed |= GUI_ApplySelectionCommand(&command, selected_items, item_count, primary_index, anchor_index);
+        }
+
+        if (row.activated)
         {
             activated_index = (i32) item_index;
         }
+
+        GUI_SelectableRowDraw(context, &row, row_id, items[item_index], selected_items[item_index], resolved_row_style);
     }
     GUI_EndScrollRegion(context);
 
     if (out_activated_index != NULL)
     {
         *out_activated_index = activated_index;
-    }
-
-    if (activated_index >= 0)
-    {
-        GUISelectionCommand command;
-
-        command = GUI_BuildSelectionCommand(context, true, activated_index, *anchor_index, allow_multi_select);
-        selection_changed = GUI_ApplySelectionCommand(&command, selected_items, item_count, primary_index, anchor_index);
     }
 
     return selection_changed;
