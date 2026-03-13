@@ -157,6 +157,23 @@ typedef struct GUISelectableRowStyle
     f32 height;
 } GUISelectableRowStyle;
 
+typedef enum GUISelectionCommandType
+{
+    GUI_SELECTION_COMMAND_TYPE_NONE = 0,
+    GUI_SELECTION_COMMAND_TYPE_REPLACE_ONE,
+    GUI_SELECTION_COMMAND_TYPE_TOGGLE_ONE,
+    GUI_SELECTION_COMMAND_TYPE_REPLACE_RANGE,
+} GUISelectionCommandType;
+
+typedef struct GUISelectionCommand
+{
+    GUISelectionCommandType type;
+    i32 index;
+    i32 range_min;
+    i32 range_max;
+    i32 next_anchor_index;
+} GUISelectionCommand;
+
 GUIToggleStyle GUIToggleStyle_Default (void);
 GUISliderStyle GUISliderStyle_Default (void);
 GUIScrollRegionStyle GUIScrollRegionStyle_Default (void);
@@ -170,6 +187,8 @@ GUISelectableRowStyle GUISelectableRowStyle_Default (void);
 f32 GUI_MeasureLabelWidth (const GUIContext *context, String text, const GUILabelStyle *style);
 f32 GUI_MeasureMaxLabelWidth (const GUIContext *context, const String *texts, usize text_count, const GUILabelStyle *style);
 Vec2 GUI_MeasureButtonSize (const GUIContext *context, String text, const GUIButtonStyle *style);
+GUISelectionCommand GUI_BuildSelectionCommand (const GUIContext *context, b32 item_activated, i32 index, i32 anchor_index, b32 allow_multi_select);
+b32 GUI_ApplySelectionCommand (const GUISelectionCommand *command, b32 *selected_items, usize item_count, i32 *primary_index, i32 *anchor_index);
 
 void GUI_BeginPanel (GUIContext *context, GUIID id, Rect2 rect, const GUIPanelStyle *style);
 void GUI_EndPanel (GUIContext *context);

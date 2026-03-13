@@ -966,6 +966,140 @@ Vec2 GUI_MeasureButtonSize (const GUIContext *context, String text, const GUIBut
     return Vec2_Create(width, resolved_style->height);
 }
 
+GUISelectionCommand GUI_BuildSelectionCommand (const GUIContext *context, b32 item_activated, i32 index, i32 anchor_index, b32 allow_multi_select)
+{
+    GUISelectionCommand command;
+    i32 resolved_anchor_index;
+
+    ASSERT(context != NULL);
+    ASSERT(index >= 0);
+
+    Memory_ZeroStruct(&command);
+    if (!item_activated)
+    {
+        return command;
+    }
+
+    resolved_anchor_index = (anchor_index >= 0) ? anchor_index : index;
+    command.index = index;
+    command.range_min = index;
+    command.range_max = index;
+    command.next_anchor_index = index;
+
+    if (!allow_multi_select)
+    {
+        command.type = GUI_SELECTION_COMMAND_TYPE_REPLACE_ONE;
+        return command;
+    }
+
+    if (context->input.shift_is_down)
+    {
+        command.type = GUI_SELECTION_COMMAND_TYPE_REPLACE_RANGE;
+        command.range_min = MIN(resolved_anchor_index, index);
+        command.range_max = MAX(resolved_anchor_index, index);
+        command.next_anchor_index = resolved_anchor_index;
+    }
+    else if (context->input.control_is_down)
+    {
+        command.type = GUI_SELECTION_COMMAND_TYPE_TOGGLE_ONE;
+    }
+    else
+    {
+        command.type = GUI_SELECTION_COMMAND_TYPE_REPLACE_ONE;
+    }
+
+    return command;
+}
+
+b32 GUI_ApplySelectionCommand (const GUISelectionCommand *command, b32 *selected_items, usize item_count, i32 *primary_index, i32 *anchor_index)
+{
+    usize item_index;
+    b32 changed;
+
+    ASSERT(command != NULL);
+    ASSERT((selected_items != NULL) || (item_count == 0));
+    ASSERT(primary_index != NULL);
+    ASSERT(anchor_index != NULL);
+
+    changed = false;
+
+    switch (command->type)
+    {
+        case GUI_SELECTION_COMMAND_TYPE_NONE:
+        {
+        } break;
+
+        case GUI_SELECTION_COMMAND_TYPE_REPLACE_ONE:
+        {
+            for (item_index = 0; item_index < item_count; item_index += 1)
+            {
+                b32 should_select;
+
+                should_select = (item_index == (usize) command->index);
+                if (selected_items[item_index] != should_select)
+                {
+                    selected_items[item_index] = should_select;
+                    changed = true;
+                }
+            }
+
+            *primary_index = command->index;
+            *anchor_index = command->next_anchor_index;
+        } break;
+
+        case GUI_SELECTION_COMMAND_TYPE_TOGGLE_ONE:
+        {
+            ASSERT((usize) command->index < item_count);
+
+            selected_items[command->index] = !selected_items[command->index];
+            changed = true;
+            *primary_index = selected_items[command->index] ? command->index : -1;
+            *anchor_index = command->next_anchor_index;
+
+            if (*primary_index < 0)
+            {
+                for (item_index = 0; item_index < item_count; item_index += 1)
+                {
+                    if (selected_items[item_index])
+                    {
+                        *primary_index = (i32) item_index;
+                        break;
+                    }
+                }
+            }
+        } break;
+
+        case GUI_SELECTION_COMMAND_TYPE_REPLACE_RANGE:
+        {
+            ASSERT(command->range_min >= 0);
+            ASSERT(command->range_max >= command->range_min);
+            ASSERT((usize) command->range_max < item_count);
+
+            for (item_index = 0; item_index < item_count; item_index += 1)
+            {
+                b32 should_select;
+
+                should_select = ((i32) item_index >= command->range_min) && ((i32) item_index <= command->range_max);
+                if (selected_items[item_index] != should_select)
+                {
+                    selected_items[item_index] = should_select;
+                    changed = true;
+                }
+            }
+
+            *primary_index = command->index;
+            *anchor_index = command->next_anchor_index;
+        } break;
+
+        default:
+        {
+            ASSERT(!"Unhandled GUISelectionCommandType");
+        } break;
+    }
+
+    return changed;
+}
+
 void GUI_BeginFormRow (GUIContext *context, String label, f32 label_width, f32 height, f32 spacing, const GUILabelStyle *label_style)
 {
     const GUILabelStyle *resolved_style;
