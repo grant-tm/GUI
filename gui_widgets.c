@@ -1761,6 +1761,69 @@ static void GUI_SelectableRowDraw (
     GUI_DrawText(context, text_position, text, text_color, resolved_style->text_size);
 }
 
+static i32 GUI_ListBoxFindFirstSelectedIndex (const b32 *selected_items, usize item_count)
+{
+    usize item_index;
+
+    ASSERT((selected_items != NULL) || (item_count == 0));
+
+    for (item_index = 0; item_index < item_count; item_index += 1)
+    {
+        if (selected_items[item_index])
+        {
+            return (i32) item_index;
+        }
+    }
+
+    return -1;
+}
+
+static void GUI_ListBoxEnsureItemVisible (
+    GUIScrollRegionState *scroll_state,
+    Rect2 rect,
+    const GUIListBoxStyle *style,
+    usize item_count,
+    i32 item_index
+)
+{
+    Rect2 viewport_rect;
+    f32 viewport_height;
+    f32 row_advance;
+    f32 item_top;
+    f32 item_bottom;
+    f32 content_height;
+    f32 max_scroll;
+
+    ASSERT(scroll_state != NULL);
+    ASSERT(style != NULL);
+    ASSERT(item_index >= 0);
+
+    viewport_rect = GUIRect_Inset(
+        rect,
+        style->scroll_region_style.padding.x,
+        style->scroll_region_style.padding.y
+    );
+    viewport_height = MAX(0.0f, viewport_rect.max.y - viewport_rect.min.y);
+    row_advance = style->row_style.height + style->scroll_region_style.spacing;
+    item_top = (f32) item_index * row_advance;
+    item_bottom = item_top + style->row_style.height;
+    content_height = (item_count > 0)
+        ? ((f32) item_count * style->row_style.height) + ((f32) (item_count - 1) * style->scroll_region_style.spacing)
+        : 0.0f;
+    max_scroll = MAX(0.0f, content_height - viewport_height);
+
+    if (item_top < scroll_state->scroll_y)
+    {
+        scroll_state->scroll_y = item_top;
+    }
+    else if (item_bottom > (scroll_state->scroll_y + viewport_height))
+    {
+        scroll_state->scroll_y = item_bottom - viewport_height;
+    }
+
+    scroll_state->scroll_y = F32_Clamp(scroll_state->scroll_y, 0.0f, max_scroll);
+}
+
 b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b32 is_selected, const GUISelectableRowStyle *style)
 {
     GUISelectableRowResult row;
@@ -1788,12 +1851,18 @@ b32 GUI_ListBox (
     GUIListBoxStyle default_style;
     const GUIListBoxStyle *resolved_style;
     Rect2 rect;
+    GUIID scroll_region_id;
     i32 activated_index;
+    i32 focused_index;
+    i32 target_index;
     usize item_index;
     b32 selection_changed;
+    b32 is_focused;
+    b32 keyboard_selection_changed;
     GUISelectableRowResult row;
     GUIID row_id;
     GUISelectionCommand command;
+    GUIScrollRegionState *scroll_state;
 
     ASSERT(context != NULL);
     ASSERT(id != 0);
@@ -1813,26 +1882,95 @@ b32 GUI_ListBox (
     }
 
     rect = GUI_LayoutNextRect(context, Vec2_Create(width, resolved_style->height));
+    scroll_region_id = GUI_DeriveID(id, 0x1B057ULL);
     activated_index = -1;
     selection_changed = false;
+    keyboard_selection_changed = false;
+    is_focused = context->focused_id == id;
+    scroll_state = GUI_GetOrCreateScrollRegionState(context, scroll_region_id);
+    ASSERT(scroll_state != NULL);
 
-    GUI_BeginScrollRegion(context, id, rect, &resolved_style->scroll_region_style);
+    focused_index = *primary_index;
+    if ((focused_index < 0) || ((usize) focused_index >= item_count))
+    {
+        focused_index = GUI_ListBoxFindFirstSelectedIndex(selected_items, item_count);
+    }
+    if ((focused_index < 0) && (item_count > 0))
+    {
+        focused_index = 0;
+    }
+
+    if (is_focused && (item_count > 0))
+    {
+        target_index = focused_index;
+
+        if (context->input.keys_pressed[PLATFORM_KEY_UP] && (target_index > 0))
+        {
+            target_index -= 1;
+        }
+        else if (context->input.keys_pressed[PLATFORM_KEY_DOWN] && (target_index < ((i32) item_count - 1)))
+        {
+            target_index += 1;
+        }
+        else if (context->input.keys_pressed[PLATFORM_KEY_HOME])
+        {
+            target_index = 0;
+        }
+        else if (context->input.keys_pressed[PLATFORM_KEY_END])
+        {
+            target_index = (i32) item_count - 1;
+        }
+        else if (context->input.keys_pressed[PLATFORM_KEY_PAGE_UP])
+        {
+            i32 visible_rows;
+
+            visible_rows = MAX(1, (i32) ((resolved_style->height - (resolved_style->scroll_region_style.padding.y * 2.0f)) /
+                (resolved_style->row_style.height + resolved_style->scroll_region_style.spacing)));
+            target_index = MAX(0, target_index - visible_rows);
+        }
+        else if (context->input.keys_pressed[PLATFORM_KEY_PAGE_DOWN])
+        {
+            i32 visible_rows;
+
+            visible_rows = MAX(1, (i32) ((resolved_style->height - (resolved_style->scroll_region_style.padding.y * 2.0f)) /
+                (resolved_style->row_style.height + resolved_style->scroll_region_style.spacing)));
+            target_index = MIN((i32) item_count - 1, target_index + visible_rows);
+        }
+
+        if (target_index != focused_index)
+        {
+            command = GUI_BuildSelectionCommand(context, true, target_index, *anchor_index, allow_multi_select);
+            keyboard_selection_changed = GUI_ApplySelectionCommand(&command, selected_items, item_count, primary_index, anchor_index);
+            selection_changed |= keyboard_selection_changed;
+            GUI_ListBoxEnsureItemVisible(scroll_state, rect, resolved_style, item_count, target_index);
+            focused_index = target_index;
+        }
+
+        if ((context->input.keys_pressed[PLATFORM_KEY_ENTER] || context->input.keys_pressed[PLATFORM_KEY_SPACE]) && (focused_index >= 0))
+        {
+            activated_index = focused_index;
+        }
+    }
+
+    GUI_BeginScrollRegion(context, scroll_region_id, rect, &resolved_style->scroll_region_style);
     for (item_index = 0; item_index < item_count; item_index += 1)
     {
         const GUISelectableRowStyle *resolved_row_style;
 
-        row_id = GUI_DeriveID(id, (u64) item_index + 1u);
+        row_id = GUI_DeriveID(scroll_region_id, (u64) item_index + 1u);
         row = GUI_SelectableRowBegin(context, row_id, 0.0f, &resolved_style->row_style, &resolved_row_style);
 
         if (row.pressed)
         {
             command = GUI_BuildSelectionCommand(context, true, (i32) item_index, *anchor_index, allow_multi_select);
             selection_changed |= GUI_ApplySelectionCommand(&command, selected_items, item_count, primary_index, anchor_index);
+            context->focused_id = id;
         }
 
         if (row.activated)
         {
             activated_index = (i32) item_index;
+            context->focused_id = id;
         }
 
         GUI_SelectableRowDraw(context, &row, row_id, items[item_index], selected_items[item_index], resolved_row_style);
