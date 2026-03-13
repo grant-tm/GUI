@@ -189,6 +189,7 @@ void GUI_BeginFrame (GUIContext *context, const GUIFrameDesc *desc)
     if (!context->input.mouse_buttons[PLATFORM_MOUSE_BUTTON_LEFT])
     {
         context->active_id = 0;
+        context->drag_origin_id = 0;
     }
 }
 

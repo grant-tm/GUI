@@ -1452,6 +1452,8 @@ b32 GUI_DragF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32 ma
     String value_text;
     f32 clamped_value;
     f32 step_scale;
+    f32 drag_scale;
+    f32 drag_distance;
     f32 delta;
     b32 is_hot;
     b32 is_focused;
@@ -1486,6 +1488,9 @@ b32 GUI_DragF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32 ma
     {
         context->active_id = id;
         context->focused_id = id;
+        context->drag_origin_id = id;
+        context->drag_origin_mouse_position = context->input.mouse_position;
+        context->drag_origin_value = *value;
         is_focused = true;
     }
     else if (context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && !is_hot && is_focused)
@@ -1495,28 +1500,59 @@ b32 GUI_DragF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32 ma
     }
 
     step_scale = resolved_style->step;
-    if (context->input.shift_is_down)
+    if (context->input.control_is_down)
     {
         step_scale *= 0.1f;
     }
+
+    drag_scale = resolved_style->drag_sensitivity;
     if (context->input.control_is_down)
     {
-        step_scale *= 10.0f;
+        drag_scale *= 0.1f;
     }
 
     if ((context->active_id == id) && context->input.mouse_buttons[PLATFORM_MOUSE_BUTTON_LEFT])
     {
-        delta = context->input.mouse_delta.x * resolved_style->drag_sensitivity;
+        if (context->drag_origin_id == id)
+        {
+            Vec2 drag_offset;
+            f32 abs_drag_x;
+            f32 abs_drag_y;
+
+            drag_offset = Vec2_Subtract(context->input.mouse_position, context->drag_origin_mouse_position);
+            abs_drag_x = (drag_offset.x >= 0.0f) ? drag_offset.x : -drag_offset.x;
+            abs_drag_y = (drag_offset.y >= 0.0f) ? drag_offset.y : -drag_offset.y;
+
+            if (abs_drag_x >= abs_drag_y)
+            {
+                drag_distance = drag_offset.x;
+            }
+            else
+            {
+                drag_distance = -drag_offset.y;
+            }
+        }
+        else
+        {
+            drag_distance = 0.0f;
+        }
+
+        delta = drag_distance * drag_scale;
         if (delta != 0.0f)
         {
-            *value = GUI_ClampToRange(*value + delta, min_value, max_value);
-            changed = true;
+            clamped_value = GUI_ClampToRange(context->drag_origin_value + delta, min_value, max_value);
+            if (clamped_value != *value)
+            {
+                *value = clamped_value;
+                changed = true;
+            }
         }
     }
 
     if ((context->active_id == id) && context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT])
     {
         context->active_id = 0;
+        context->drag_origin_id = 0;
     }
 
     if (is_focused)
@@ -1623,13 +1659,9 @@ b32 GUI_SpinBoxF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32
     }
 
     step_scale = resolved_style->step;
-    if (context->input.shift_is_down)
-    {
-        step_scale *= 0.1f;
-    }
     if (context->input.control_is_down)
     {
-        step_scale *= 10.0f;
+        step_scale *= 0.1f;
     }
 
     if ((context->active_id == decrement_id) && context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT])
