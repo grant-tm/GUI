@@ -1824,6 +1824,67 @@ static void GUI_ListBoxEnsureItemVisible (
     scroll_state->scroll_y = F32_Clamp(scroll_state->scroll_y, 0.0f, max_scroll);
 }
 
+static b32 GUI_ListBoxSelectAll (
+    b32 *selected_items,
+    usize item_count,
+    i32 *primary_index,
+    i32 *anchor_index
+)
+{
+    usize item_index;
+    b32 changed;
+    i32 resolved_primary_index;
+    i32 resolved_anchor_index;
+
+    ASSERT((selected_items != NULL) || (item_count == 0));
+    ASSERT(primary_index != NULL);
+    ASSERT(anchor_index != NULL);
+
+    changed = false;
+    for (item_index = 0; item_index < item_count; item_index += 1)
+    {
+        if (!selected_items[item_index])
+        {
+            selected_items[item_index] = true;
+            changed = true;
+        }
+    }
+
+    if (item_count == 0)
+    {
+        resolved_primary_index = -1;
+        resolved_anchor_index = -1;
+    }
+    else
+    {
+        resolved_primary_index = *primary_index;
+        if ((resolved_primary_index < 0) || ((usize) resolved_primary_index >= item_count))
+        {
+            resolved_primary_index = 0;
+        }
+
+        resolved_anchor_index = *anchor_index;
+        if ((resolved_anchor_index < 0) || ((usize) resolved_anchor_index >= item_count))
+        {
+            resolved_anchor_index = 0;
+        }
+    }
+
+    if (*primary_index != resolved_primary_index)
+    {
+        *primary_index = resolved_primary_index;
+        changed = true;
+    }
+
+    if (*anchor_index != resolved_anchor_index)
+    {
+        *anchor_index = resolved_anchor_index;
+        changed = true;
+    }
+
+    return changed;
+}
+
 b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b32 is_selected, const GUISelectableRowStyle *style)
 {
     GUISelectableRowResult row;
@@ -1937,9 +1998,38 @@ b32 GUI_ListBox (
             target_index = MIN((i32) item_count - 1, target_index + visible_rows);
         }
 
-        if (target_index != focused_index)
+        if (allow_multi_select && context->input.control_is_down && context->input.keys_pressed[PLATFORM_KEY_A])
         {
-            command = GUI_BuildSelectionCommand(context, true, target_index, *anchor_index, allow_multi_select);
+            selection_changed |= GUI_ListBoxSelectAll(selected_items, item_count, primary_index, anchor_index);
+            GUI_ListBoxEnsureItemVisible(scroll_state, rect, resolved_style, item_count, focused_index);
+        }
+        else if (target_index != focused_index)
+        {
+            if (allow_multi_select && context->input.shift_is_down)
+            {
+                i32 resolved_anchor_index;
+
+                resolved_anchor_index = *anchor_index;
+                if ((resolved_anchor_index < 0) || ((usize) resolved_anchor_index >= item_count))
+                {
+                    resolved_anchor_index = focused_index;
+                }
+
+                command.type = GUI_SELECTION_COMMAND_TYPE_REPLACE_RANGE;
+                command.index = target_index;
+                command.range_min = MIN(resolved_anchor_index, target_index);
+                command.range_max = MAX(resolved_anchor_index, target_index);
+                command.next_anchor_index = resolved_anchor_index;
+            }
+            else
+            {
+                command.type = GUI_SELECTION_COMMAND_TYPE_REPLACE_ONE;
+                command.index = target_index;
+                command.range_min = target_index;
+                command.range_max = target_index;
+                command.next_anchor_index = target_index;
+            }
+
             keyboard_selection_changed = GUI_ApplySelectionCommand(&command, selected_items, item_count, primary_index, anchor_index);
             selection_changed |= keyboard_selection_changed;
             GUI_ListBoxEnsureItemVisible(scroll_state, rect, resolved_style, item_count, target_index);
