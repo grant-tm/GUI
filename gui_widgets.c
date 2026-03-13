@@ -467,6 +467,12 @@ static GUINumericEditResult GUI_NumericEditTextField (GUIContext *context, GUIID
         }
     }
 
+    if (context->input.control_is_down && context->input.keys_pressed[PLATFORM_KEY_A])
+    {
+        context->text_field_selection_anchor = 0;
+        context->text_field_caret = context->numeric_edit_length;
+    }
+
     for (event_index = 0; event_index < context->input.text_input_codepoint_count; event_index += 1)
     {
         u32 codepoint;
