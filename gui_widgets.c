@@ -74,6 +74,30 @@ static String GUI_FormatF32 (MemoryArena *arena, f32 value, i32 precision)
     return String_Create(buffer, (usize) length);
 }
 
+static String GUI_FormatI32 (MemoryArena *arena, i32 value)
+{
+    c8 *buffer;
+    i32 length;
+
+    ASSERT(arena != NULL);
+
+    buffer = MemoryArena_PushArray(arena, c8, 32);
+    ASSERT(buffer != NULL);
+    length = _snprintf_s(buffer, 32, _TRUNCATE, "%d", value);
+    ASSERT(length >= 0);
+    return String_Create(buffer, (usize) length);
+}
+
+static i32 GUI_RoundF32ToI32 (f32 value)
+{
+    if (value >= 0.0f)
+    {
+        return (i32) (value + 0.5f);
+    }
+
+    return (i32) (value - 0.5f);
+}
+
 static usize GUI_GetCaretIndexFromPosition (const GUIContext *context, Rect2 rect, Vec2 padding, String text, f32 text_size, f32 mouse_x)
 {
     usize index;
@@ -496,6 +520,26 @@ GUIDragF32Style GUIDragF32Style_Default (void)
     return style;
 }
 
+GUIDragI32Style GUIDragI32Style_Default (void)
+{
+    GUIDragI32Style style;
+
+    style.background_color = GUIColor_Create(0.12f, 0.14f, 0.18f, 1.0f);
+    style.hot_color = GUIColor_Create(0.16f, 0.18f, 0.24f, 1.0f);
+    style.active_color = GUIColor_Create(0.20f, 0.24f, 0.32f, 1.0f);
+    style.border_color = GUIColor_Create(0.20f, 0.24f, 0.30f, 1.0f);
+    style.text_color = GUIColor_Create(0.92f, 0.94f, 0.98f, 1.0f);
+    style.accent_color = GUIColor_Create(0.24f, 0.68f, 0.98f, 1.0f);
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
+    style.padding = Vec2_Create(10.0f, 8.0f);
+    style.text_size = 16.0f;
+    style.height = 34.0f;
+    style.drag_sensitivity = 0.25f;
+    style.step = 1;
+    return style;
+}
+
 GUISpinBoxStyle GUISpinBoxStyle_Default (void)
 {
     GUISpinBoxStyle style;
@@ -514,6 +558,26 @@ GUISpinBoxStyle GUISpinBoxStyle_Default (void)
     style.button_width = 28.0f;
     style.step = 0.01f;
     style.precision = 3;
+    return style;
+}
+
+GUISpinBoxI32Style GUISpinBoxI32Style_Default (void)
+{
+    GUISpinBoxI32Style style;
+
+    style.background_color = GUIColor_Create(0.12f, 0.14f, 0.18f, 1.0f);
+    style.button_color = GUIColor_Create(0.16f, 0.18f, 0.24f, 1.0f);
+    style.button_hot_color = GUIColor_Create(0.20f, 0.24f, 0.32f, 1.0f);
+    style.button_active_color = GUIColor_Create(0.24f, 0.30f, 0.40f, 1.0f);
+    style.border_color = GUIColor_Create(0.20f, 0.24f, 0.30f, 1.0f);
+    style.text_color = GUIColor_Create(0.92f, 0.94f, 0.98f, 1.0f);
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
+    style.padding = Vec2_Create(10.0f, 8.0f);
+    style.text_size = 16.0f;
+    style.height = 34.0f;
+    style.button_width = 32.0f;
+    style.step = 1;
     return style;
 }
 
@@ -1243,6 +1307,50 @@ b32 GUI_PropertySpinBoxF32 (GUIContext *context, GUIID id, String label, f32 min
     return changed;
 }
 
+b32 GUI_PropertyDragI32 (GUIContext *context, GUIID id, String label, i32 min_value, i32 max_value, i32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIDragI32Style *drag_style)
+{
+    GUIDragI32Style default_style;
+    const GUIDragI32Style *resolved_drag_style;
+    b32 changed;
+
+    if (drag_style == NULL)
+    {
+        default_style = GUIDragI32Style_Default();
+        resolved_drag_style = &default_style;
+    }
+    else
+    {
+        resolved_drag_style = drag_style;
+    }
+
+    GUI_BeginPropertyRow(context, label, label_width, resolved_drag_style->height, spacing, label_style);
+    changed = GUI_DragI32(context, id, GUI_GetRemainingWidth(context), min_value, max_value, value, drag_style);
+    GUI_EndPropertyRow(context);
+    return changed;
+}
+
+b32 GUI_PropertySpinBoxI32 (GUIContext *context, GUIID id, String label, i32 min_value, i32 max_value, i32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUISpinBoxI32Style *spin_box_style)
+{
+    GUISpinBoxI32Style default_style;
+    const GUISpinBoxI32Style *resolved_spin_box_style;
+    b32 changed;
+
+    if (spin_box_style == NULL)
+    {
+        default_style = GUISpinBoxI32Style_Default();
+        resolved_spin_box_style = &default_style;
+    }
+    else
+    {
+        resolved_spin_box_style = spin_box_style;
+    }
+
+    GUI_BeginPropertyRow(context, label, label_width, resolved_spin_box_style->height, spacing, label_style);
+    changed = GUI_SpinBoxI32(context, id, GUI_GetRemainingWidth(context), min_value, max_value, value, spin_box_style);
+    GUI_EndPropertyRow(context);
+    return changed;
+}
+
 b32 GUI_Toggle (GUIContext *context, GUIID id, String text, b32 *value, const GUIToggleStyle *style)
 {
     Rect2 rect;
@@ -1747,6 +1855,340 @@ b32 GUI_SpinBoxF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32
     GUI_DrawText(context, GUI_GetTextPosition(increment_rect, resolved_style->padding, resolved_style->text_size), String_FromLiteral(StringLiteral_Create("+")), resolved_style->text_color, resolved_style->text_size);
 
     value_text = GUI_FormatF32(context->frame_arena, *value, resolved_style->precision);
+    value_position = GUI_GetTextPosition(value_rect, resolved_style->padding, resolved_style->text_size);
+    GUI_DrawText(context, value_position, value_text, resolved_style->text_color, resolved_style->text_size);
+
+    return changed;
+}
+
+b32 GUI_DragI32 (GUIContext *context, GUIID id, f32 width, i32 min_value, i32 max_value, i32 *value, const GUIDragI32Style *style)
+{
+    GUIDragI32Style default_style;
+    const GUIDragI32Style *resolved_style;
+    Rect2 rect;
+    Rect2 accent_rect;
+    Vec2 value_position;
+    Vec4 background_color;
+    String value_text;
+    f32 drag_scale;
+    f32 drag_distance;
+    f32 delta;
+    i32 step_scale;
+    i32 clamped_value;
+    b32 is_hot;
+    b32 is_focused;
+    b32 changed;
+
+    ASSERT(context != NULL);
+    ASSERT(value != NULL);
+    ASSERT(max_value >= min_value);
+
+    if (style == NULL)
+    {
+        default_style = GUIDragI32Style_Default();
+        resolved_style = &default_style;
+    }
+    else
+    {
+        resolved_style = style;
+    }
+
+    rect = GUI_LayoutNextRect(context, Vec2_Create(width, resolved_style->height));
+    clamped_value = I32_Clamp(*value, min_value, max_value);
+    if (clamped_value != *value)
+    {
+        *value = clamped_value;
+    }
+
+    is_hot = GUI_IsHot(context, id, rect);
+    is_focused = context->focused_id == id;
+    changed = false;
+
+    if (is_hot && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->active_id = id;
+        context->focused_id = id;
+        context->drag_origin_id = id;
+        context->drag_origin_mouse_position = context->input.mouse_position;
+        context->drag_origin_value = (f32) *value;
+        context->drag_origin_control_is_down = context->input.control_is_down;
+        is_focused = true;
+    }
+    else if (context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && !is_hot && is_focused)
+    {
+        context->focused_id = 0;
+        is_focused = false;
+    }
+
+    step_scale = resolved_style->step;
+    if (context->input.control_is_down)
+    {
+        step_scale = MAX(1, step_scale / 10);
+    }
+
+    drag_scale = resolved_style->drag_sensitivity;
+    if (context->input.control_is_down)
+    {
+        drag_scale *= 0.1f;
+    }
+
+    if ((context->active_id == id) && context->input.mouse_buttons[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        if (context->drag_origin_id == id)
+        {
+            Vec2 drag_offset;
+            f32 abs_drag_x;
+            f32 abs_drag_y;
+
+            if (context->drag_origin_control_is_down != context->input.control_is_down)
+            {
+                context->drag_origin_mouse_position = context->input.mouse_position;
+                context->drag_origin_value = (f32) *value;
+                context->drag_origin_control_is_down = context->input.control_is_down;
+            }
+
+            drag_offset = Vec2_Subtract(context->input.mouse_position, context->drag_origin_mouse_position);
+            abs_drag_x = (drag_offset.x >= 0.0f) ? drag_offset.x : -drag_offset.x;
+            abs_drag_y = (drag_offset.y >= 0.0f) ? drag_offset.y : -drag_offset.y;
+
+            if (abs_drag_x >= abs_drag_y)
+            {
+                drag_distance = drag_offset.x;
+            }
+            else
+            {
+                drag_distance = -drag_offset.y;
+            }
+        }
+        else
+        {
+            drag_distance = 0.0f;
+        }
+
+        delta = drag_distance * drag_scale;
+        clamped_value = I32_Clamp(GUI_RoundF32ToI32(context->drag_origin_value + delta), min_value, max_value);
+        if (clamped_value != *value)
+        {
+            *value = clamped_value;
+            changed = true;
+        }
+    }
+
+    if ((context->active_id == id) && context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->active_id = 0;
+        context->drag_origin_id = 0;
+        context->drag_origin_control_is_down = false;
+    }
+
+    if (is_focused)
+    {
+        if (context->input.keys_pressed[PLATFORM_KEY_LEFT])
+        {
+            clamped_value = I32_Clamp(*value - step_scale, min_value, max_value);
+            if (clamped_value != *value)
+            {
+                *value = clamped_value;
+                changed = true;
+            }
+        }
+
+        if (context->input.keys_pressed[PLATFORM_KEY_RIGHT])
+        {
+            clamped_value = I32_Clamp(*value + step_scale, min_value, max_value);
+            if (clamped_value != *value)
+            {
+                *value = clamped_value;
+                changed = true;
+            }
+        }
+    }
+
+    background_color = resolved_style->background_color;
+    if (context->active_id == id)
+    {
+        background_color = resolved_style->active_color;
+    }
+    else if (is_hot)
+    {
+        background_color = resolved_style->hot_color;
+    }
+
+    GUI_DrawFilledRect(context, rect, background_color, resolved_style->corner_radii);
+    GUI_DrawStrokedRect(context, rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+
+    accent_rect = Rect2_Create(rect.min.x, rect.min.y, MIN(rect.max.x, rect.min.x + 4.0f), rect.max.y);
+    GUI_DrawFilledRect(context, accent_rect, resolved_style->accent_color, GUICornerRadii_Create(
+        resolved_style->corner_radii.top_left,
+        0.0f,
+        0.0f,
+        resolved_style->corner_radii.bottom_left
+    ));
+
+    value_text = GUI_FormatI32(context->frame_arena, *value);
+    value_position = GUI_GetTextPosition(rect, resolved_style->padding, resolved_style->text_size);
+    GUI_DrawText(context, value_position, value_text, resolved_style->text_color, resolved_style->text_size);
+    return changed;
+}
+
+b32 GUI_SpinBoxI32 (GUIContext *context, GUIID id, f32 width, i32 min_value, i32 max_value, i32 *value, const GUISpinBoxI32Style *style)
+{
+    GUISpinBoxI32Style default_style;
+    const GUISpinBoxI32Style *resolved_style;
+    Rect2 rect;
+    Rect2 decrement_rect;
+    Rect2 increment_rect;
+    Rect2 value_rect;
+    Vec2 value_position;
+    Vec4 decrement_color;
+    Vec4 increment_color;
+    String value_text;
+    GUIID decrement_id;
+    GUIID increment_id;
+    b32 decrement_hot;
+    b32 increment_hot;
+    b32 is_focused;
+    b32 changed;
+    i32 step_scale;
+    i32 clamped_value;
+
+    ASSERT(context != NULL);
+    ASSERT(value != NULL);
+    ASSERT(max_value >= min_value);
+
+    if (style == NULL)
+    {
+        default_style = GUISpinBoxI32Style_Default();
+        resolved_style = &default_style;
+    }
+    else
+    {
+        resolved_style = style;
+    }
+
+    rect = GUI_LayoutNextRect(context, Vec2_Create(width, resolved_style->height));
+    *value = I32_Clamp(*value, min_value, max_value);
+
+    decrement_id = GUI_DeriveID(id, 0x82E7A111u);
+    increment_id = GUI_DeriveID(id, 0x82E7B222u);
+    decrement_rect = Rect2_Create(rect.min.x, rect.min.y, MIN(rect.max.x, rect.min.x + resolved_style->button_width), rect.max.y);
+    increment_rect = Rect2_Create(MAX(rect.min.x, rect.max.x - resolved_style->button_width), rect.min.y, rect.max.x, rect.max.y);
+    value_rect = Rect2_Create(decrement_rect.max.x, rect.min.y, increment_rect.min.x, rect.max.y);
+
+    decrement_hot = GUI_IsHot(context, decrement_id, decrement_rect);
+    increment_hot = GUI_IsHot(context, increment_id, increment_rect);
+    is_focused = context->focused_id == id;
+    changed = false;
+
+    if ((decrement_hot || increment_hot) && context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        context->active_id = decrement_hot ? decrement_id : increment_id;
+        context->focused_id = id;
+        is_focused = true;
+    }
+    else if (context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] &&
+             !GUI_PointInRect(context->input.mouse_position, rect) && is_focused)
+    {
+        context->focused_id = 0;
+        is_focused = false;
+    }
+
+    step_scale = resolved_style->step;
+    if (context->input.control_is_down)
+    {
+        step_scale = MAX(1, step_scale / 10);
+    }
+
+    if ((context->active_id == decrement_id) && context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        if (decrement_hot)
+        {
+            clamped_value = I32_Clamp(*value - step_scale, min_value, max_value);
+            if (clamped_value != *value)
+            {
+                *value = clamped_value;
+                changed = true;
+            }
+        }
+        context->active_id = 0;
+    }
+
+    if ((context->active_id == increment_id) && context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT])
+    {
+        if (increment_hot)
+        {
+            clamped_value = I32_Clamp(*value + step_scale, min_value, max_value);
+            if (clamped_value != *value)
+            {
+                *value = clamped_value;
+                changed = true;
+            }
+        }
+        context->active_id = 0;
+    }
+
+    if (is_focused)
+    {
+        if (context->input.keys_pressed[PLATFORM_KEY_LEFT])
+        {
+            clamped_value = I32_Clamp(*value - step_scale, min_value, max_value);
+            if (clamped_value != *value)
+            {
+                *value = clamped_value;
+                changed = true;
+            }
+        }
+        if (context->input.keys_pressed[PLATFORM_KEY_RIGHT])
+        {
+            clamped_value = I32_Clamp(*value + step_scale, min_value, max_value);
+            if (clamped_value != *value)
+            {
+                *value = clamped_value;
+                changed = true;
+            }
+        }
+    }
+
+    GUI_DrawFilledRect(context, rect, resolved_style->background_color, resolved_style->corner_radii);
+    GUI_DrawStrokedRect(context, rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+
+    decrement_color = resolved_style->button_color;
+    if (context->active_id == decrement_id)
+    {
+        decrement_color = resolved_style->button_active_color;
+    }
+    else if (decrement_hot)
+    {
+        decrement_color = resolved_style->button_hot_color;
+    }
+
+    increment_color = resolved_style->button_color;
+    if (context->active_id == increment_id)
+    {
+        increment_color = resolved_style->button_active_color;
+    }
+    else if (increment_hot)
+    {
+        increment_color = resolved_style->button_hot_color;
+    }
+
+    GUI_DrawFilledRect(context, decrement_rect, decrement_color, GUICornerRadii_Create(
+        resolved_style->corner_radii.top_left,
+        0.0f,
+        0.0f,
+        resolved_style->corner_radii.bottom_left
+    ));
+    GUI_DrawFilledRect(context, increment_rect, increment_color, GUICornerRadii_Create(
+        0.0f,
+        resolved_style->corner_radii.top_right,
+        resolved_style->corner_radii.bottom_right,
+        0.0f
+    ));
+
+    GUI_DrawText(context, GUI_GetTextPosition(decrement_rect, resolved_style->padding, resolved_style->text_size), String_FromLiteral(StringLiteral_Create("-")), resolved_style->text_color, resolved_style->text_size);
+    GUI_DrawText(context, GUI_GetTextPosition(increment_rect, resolved_style->padding, resolved_style->text_size), String_FromLiteral(StringLiteral_Create("+")), resolved_style->text_color, resolved_style->text_size);
+
+    value_text = GUI_FormatI32(context->frame_arena, *value);
     value_position = GUI_GetTextPosition(value_rect, resolved_style->padding, resolved_style->text_size);
     GUI_DrawText(context, value_position, value_text, resolved_style->text_color, resolved_style->text_size);
 
