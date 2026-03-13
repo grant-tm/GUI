@@ -157,6 +157,13 @@ typedef struct GUISelectableRowStyle
     f32 height;
 } GUISelectableRowStyle;
 
+typedef struct GUIListBoxStyle
+{
+    GUIScrollRegionStyle scroll_region_style;
+    GUISelectableRowStyle row_style;
+    f32 height;
+} GUIListBoxStyle;
+
 typedef enum GUISelectionCommandType
 {
     GUI_SELECTION_COMMAND_TYPE_NONE = 0,
@@ -183,6 +190,7 @@ GUISpinBoxStyle GUISpinBoxStyle_Default (void);
 GUISpinBoxI32Style GUISpinBoxI32Style_Default (void);
 GUICollapsibleSectionStyle GUICollapsibleSectionStyle_Default (void);
 GUISelectableRowStyle GUISelectableRowStyle_Default (void);
+GUIListBoxStyle GUIListBoxStyle_Default (void);
 
 f32 GUI_MeasureLabelWidth (const GUIContext *context, String text, const GUILabelStyle *style);
 f32 GUI_MeasureMaxLabelWidth (const GUIContext *context, const String *texts, usize text_count, const GUILabelStyle *style);
@@ -204,6 +212,19 @@ void GUI_Label (GUIContext *context, String text, const GUILabelStyle *style);
 b32 GUI_Button (GUIContext *context, GUIID id, String text, f32 width, const GUIButtonStyle *style);
 b32 GUI_ButtonAuto (GUIContext *context, GUIID id, String text, const GUIButtonStyle *style);
 b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b32 is_selected, const GUISelectableRowStyle *style);
+b32 GUI_ListBox (
+    GUIContext *context,
+    GUIID id,
+    f32 width,
+    const String *items,
+    usize item_count,
+    b32 *selected_items,
+    i32 *primary_index,
+    i32 *anchor_index,
+    b32 allow_multi_select,
+    i32 *out_activated_index,
+    const GUIListBoxStyle *style
+);
 b32 GUI_PropertyButton (GUIContext *context, GUIID id, String label, String text, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIButtonStyle *button_style);
 b32 GUI_PropertyToggle (GUIContext *context, GUIID id, String label, b32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIToggleStyle *toggle_style);
 b32 GUI_PropertySliderF32 (GUIContext *context, GUIID id, String label, f32 min_value, f32 max_value, f32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUISliderStyle *slider_style);

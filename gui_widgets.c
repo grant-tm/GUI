@@ -925,6 +925,16 @@ GUISelectableRowStyle GUISelectableRowStyle_Default (void)
     return style;
 }
 
+GUIListBoxStyle GUIListBoxStyle_Default (void)
+{
+    GUIListBoxStyle style;
+
+    style.scroll_region_style = GUIScrollRegionStyle_Default();
+    style.row_style = GUISelectableRowStyle_Default();
+    style.height = 180.0f;
+    return style;
+}
+
 f32 GUI_MeasureLabelWidth (const GUIContext *context, String text, const GUILabelStyle *style)
 {
     const GUILabelStyle *resolved_style;
@@ -1716,6 +1726,81 @@ b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b3
     text_position.x = rect.min.x + resolved_style->padding.x;
     GUI_DrawText(context, text_position, text, text_color, resolved_style->text_size);
     return activated;
+}
+
+b32 GUI_ListBox (
+    GUIContext *context,
+    GUIID id,
+    f32 width,
+    const String *items,
+    usize item_count,
+    b32 *selected_items,
+    i32 *primary_index,
+    i32 *anchor_index,
+    b32 allow_multi_select,
+    i32 *out_activated_index,
+    const GUIListBoxStyle *style
+)
+{
+    GUIListBoxStyle default_style;
+    const GUIListBoxStyle *resolved_style;
+    Rect2 rect;
+    i32 activated_index;
+    usize item_index;
+    b32 selection_changed;
+
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+    ASSERT((items != NULL) || (item_count == 0));
+    ASSERT((selected_items != NULL) || (item_count == 0));
+    ASSERT(primary_index != NULL);
+    ASSERT(anchor_index != NULL);
+
+    if (style == NULL)
+    {
+        default_style = GUIListBoxStyle_Default();
+        resolved_style = &default_style;
+    }
+    else
+    {
+        resolved_style = style;
+    }
+
+    rect = GUI_LayoutNextRect(context, Vec2_Create(width, resolved_style->height));
+    activated_index = -1;
+    selection_changed = false;
+
+    GUI_BeginScrollRegion(context, id, rect, &resolved_style->scroll_region_style);
+    for (item_index = 0; item_index < item_count; item_index += 1)
+    {
+        if (GUI_SelectableRow(
+            context,
+            GUI_DeriveID(id, (u64) item_index + 1u),
+            items[item_index],
+            0.0f,
+            selected_items[item_index],
+            &resolved_style->row_style
+        ))
+        {
+            activated_index = (i32) item_index;
+        }
+    }
+    GUI_EndScrollRegion(context);
+
+    if (out_activated_index != NULL)
+    {
+        *out_activated_index = activated_index;
+    }
+
+    if (activated_index >= 0)
+    {
+        GUISelectionCommand command;
+
+        command = GUI_BuildSelectionCommand(context, true, activated_index, *anchor_index, allow_multi_select);
+        selection_changed = GUI_ApplySelectionCommand(&command, selected_items, item_count, primary_index, anchor_index);
+    }
+
+    return selection_changed;
 }
 
 b32 GUI_PropertyButton (GUIContext *context, GUIID id, String label, String text, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIButtonStyle *button_style)
