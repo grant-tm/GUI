@@ -1491,6 +1491,7 @@ b32 GUI_DragF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32 ma
         context->drag_origin_id = id;
         context->drag_origin_mouse_position = context->input.mouse_position;
         context->drag_origin_value = *value;
+        context->drag_origin_control_is_down = context->input.control_is_down;
         is_focused = true;
     }
     else if (context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT] && !is_hot && is_focused)
@@ -1518,6 +1519,13 @@ b32 GUI_DragF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32 ma
             Vec2 drag_offset;
             f32 abs_drag_x;
             f32 abs_drag_y;
+
+            if (context->drag_origin_control_is_down != context->input.control_is_down)
+            {
+                context->drag_origin_mouse_position = context->input.mouse_position;
+                context->drag_origin_value = *value;
+                context->drag_origin_control_is_down = context->input.control_is_down;
+            }
 
             drag_offset = Vec2_Subtract(context->input.mouse_position, context->drag_origin_mouse_position);
             abs_drag_x = (drag_offset.x >= 0.0f) ? drag_offset.x : -drag_offset.x;
@@ -1553,6 +1561,7 @@ b32 GUI_DragF32 (GUIContext *context, GUIID id, f32 width, f32 min_value, f32 ma
     {
         context->active_id = 0;
         context->drag_origin_id = 0;
+        context->drag_origin_control_is_down = false;
     }
 
     if (is_focused)

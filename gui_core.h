@@ -229,6 +229,7 @@ typedef struct GUIContext
     GUIID drag_origin_id;
     Vec2 drag_origin_mouse_position;
     f32 drag_origin_value;
+    b32 drag_origin_control_is_down;
     usize text_field_caret;
     usize text_field_selection_anchor;
     GUITextMeasureFunction *text_measure_function;

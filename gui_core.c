@@ -190,6 +190,7 @@ void GUI_BeginFrame (GUIContext *context, const GUIFrameDesc *desc)
     {
         context->active_id = 0;
         context->drag_origin_id = 0;
+        context->drag_origin_control_is_down = false;
     }
 }
 
