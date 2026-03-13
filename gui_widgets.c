@@ -904,6 +904,27 @@ GUICollapsibleSectionStyle GUICollapsibleSectionStyle_Default (void)
     return style;
 }
 
+GUISelectableRowStyle GUISelectableRowStyle_Default (void)
+{
+    GUISelectableRowStyle style;
+
+    style.background_color = GUIColor_Create(0.10f, 0.12f, 0.16f, 1.0f);
+    style.hot_color = GUIColor_Create(0.13f, 0.16f, 0.21f, 1.0f);
+    style.active_color = GUIColor_Create(0.17f, 0.21f, 0.28f, 1.0f);
+    style.selected_color = GUIColor_Create(0.18f, 0.31f, 0.49f, 1.0f);
+    style.selected_hot_color = GUIColor_Create(0.22f, 0.37f, 0.58f, 1.0f);
+    style.selected_active_color = GUIColor_Create(0.16f, 0.28f, 0.44f, 1.0f);
+    style.border_color = GUIColor_Create(0.32f, 0.37f, 0.46f, 1.0f);
+    style.text_color = GUIColor_Create(0.95f, 0.97f, 1.0f, 1.0f);
+    style.selected_text_color = GUIColor_Create(1.0f, 1.0f, 1.0f, 1.0f);
+    style.corner_radii = GUICornerRadii_All(6.0f);
+    style.border_thickness = GUIEdgeThickness_All(1.0f);
+    style.padding = Vec2_Create(10.0f, 8.0f);
+    style.text_size = 16.0f;
+    style.height = 32.0f;
+    return style;
+}
+
 f32 GUI_MeasureLabelWidth (const GUIContext *context, String text, const GUILabelStyle *style)
 {
     const GUILabelStyle *resolved_style;
@@ -1474,6 +1495,93 @@ b32 GUI_ButtonAuto (GUIContext *context, GUIID id, String text, const GUIButtonS
 
     measured_size = GUI_MeasureButtonSize(context, text, style);
     return GUI_Button(context, id, text, measured_size.x, style);
+}
+
+b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b32 is_selected, const GUISelectableRowStyle *style)
+{
+    GUISelectableRowStyle default_style;
+    const GUISelectableRowStyle *resolved_style;
+    Rect2 rect;
+    Vec2 text_position;
+    Vec4 background_color;
+    Vec4 text_color;
+    b32 is_hot;
+    b32 is_focused;
+    b32 was_pressed;
+    b32 was_released;
+    b32 activated;
+
+    ASSERT(context != NULL);
+    ASSERT(id != 0);
+
+    if (style == NULL)
+    {
+        default_style = GUISelectableRowStyle_Default();
+        resolved_style = &default_style;
+    }
+    else
+    {
+        resolved_style = style;
+    }
+
+    rect = GUI_LayoutNextRect(context, Vec2_Create(width, resolved_style->height));
+    is_hot = GUI_IsHot(context, id, rect);
+    is_focused = context->focused_id == id;
+    was_pressed = context->input.mouse_buttons_pressed[PLATFORM_MOUSE_BUTTON_LEFT];
+    was_released = context->input.mouse_buttons_released[PLATFORM_MOUSE_BUTTON_LEFT];
+    activated = false;
+
+    if (is_hot && was_pressed)
+    {
+        context->active_id = id;
+        context->focused_id = id;
+        is_focused = true;
+    }
+    else if (was_pressed && !is_hot && is_focused)
+    {
+        context->focused_id = 0;
+        is_focused = false;
+    }
+
+    if ((context->active_id == id) && was_released)
+    {
+        if (is_hot)
+        {
+            activated = true;
+        }
+
+        context->active_id = 0;
+    }
+
+    if (is_focused && (context->input.keys_pressed[PLATFORM_KEY_ENTER] || context->input.keys_pressed[PLATFORM_KEY_SPACE]))
+    {
+        activated = true;
+    }
+
+    background_color = resolved_style->background_color;
+    text_color = resolved_style->text_color;
+
+    if (is_selected)
+    {
+        background_color = resolved_style->selected_color;
+        text_color = resolved_style->selected_text_color;
+    }
+
+    if (context->active_id == id)
+    {
+        background_color = is_selected ? resolved_style->selected_active_color : resolved_style->active_color;
+    }
+    else if (is_hot)
+    {
+        background_color = is_selected ? resolved_style->selected_hot_color : resolved_style->hot_color;
+    }
+
+    GUI_DrawFilledRect(context, rect, background_color, resolved_style->corner_radii);
+    GUI_DrawStrokedRect(context, rect, resolved_style->border_color, resolved_style->border_thickness, resolved_style->corner_radii);
+    text_position = GUI_GetTextPositionCenteredY(rect, resolved_style->text_size);
+    text_position.x = rect.min.x + resolved_style->padding.x;
+    GUI_DrawText(context, text_position, text, text_color, resolved_style->text_size);
+    return activated;
 }
 
 b32 GUI_PropertyButton (GUIContext *context, GUIID id, String label, String text, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIButtonStyle *button_style)

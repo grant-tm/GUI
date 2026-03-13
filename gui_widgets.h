@@ -139,6 +139,24 @@ typedef struct GUICollapsibleSectionStyle
     f32 indent;
 } GUICollapsibleSectionStyle;
 
+typedef struct GUISelectableRowStyle
+{
+    Vec4 background_color;
+    Vec4 hot_color;
+    Vec4 active_color;
+    Vec4 selected_color;
+    Vec4 selected_hot_color;
+    Vec4 selected_active_color;
+    Vec4 border_color;
+    Vec4 text_color;
+    Vec4 selected_text_color;
+    GUICornerRadii corner_radii;
+    GUIEdgeThickness border_thickness;
+    Vec2 padding;
+    f32 text_size;
+    f32 height;
+} GUISelectableRowStyle;
+
 GUIToggleStyle GUIToggleStyle_Default (void);
 GUISliderStyle GUISliderStyle_Default (void);
 GUIScrollRegionStyle GUIScrollRegionStyle_Default (void);
@@ -147,6 +165,7 @@ GUIDragI32Style GUIDragI32Style_Default (void);
 GUISpinBoxStyle GUISpinBoxStyle_Default (void);
 GUISpinBoxI32Style GUISpinBoxI32Style_Default (void);
 GUICollapsibleSectionStyle GUICollapsibleSectionStyle_Default (void);
+GUISelectableRowStyle GUISelectableRowStyle_Default (void);
 
 f32 GUI_MeasureLabelWidth (const GUIContext *context, String text, const GUILabelStyle *style);
 f32 GUI_MeasureMaxLabelWidth (const GUIContext *context, const String *texts, usize text_count, const GUILabelStyle *style);
@@ -165,6 +184,7 @@ void GUI_EndPropertyRow (GUIContext *context);
 void GUI_Label (GUIContext *context, String text, const GUILabelStyle *style);
 b32 GUI_Button (GUIContext *context, GUIID id, String text, f32 width, const GUIButtonStyle *style);
 b32 GUI_ButtonAuto (GUIContext *context, GUIID id, String text, const GUIButtonStyle *style);
+b32 GUI_SelectableRow (GUIContext *context, GUIID id, String text, f32 width, b32 is_selected, const GUISelectableRowStyle *style);
 b32 GUI_PropertyButton (GUIContext *context, GUIID id, String label, String text, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIButtonStyle *button_style);
 b32 GUI_PropertyToggle (GUIContext *context, GUIID id, String label, b32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUIToggleStyle *toggle_style);
 b32 GUI_PropertySliderF32 (GUIContext *context, GUIID id, String label, f32 min_value, f32 max_value, f32 *value, f32 label_width, f32 spacing, const GUILabelStyle *label_style, const GUISliderStyle *slider_style);
