@@ -242,6 +242,8 @@ typedef struct GUIContext
     i32 numeric_edit_original_i32;
     usize text_field_caret;
     usize text_field_selection_anchor;
+    GUIID text_field_view_id;
+    f32 text_field_view_offset_x;
     GUITextMeasureFunction *text_measure_function;
     void *text_measure_user_data;
     GUIDrawCommandBuffer draw_commands;
