@@ -85,7 +85,15 @@ typedef enum GUIDrawCommandType
     GUI_DRAW_COMMAND_TYPE_FILLED_RECT,
     GUI_DRAW_COMMAND_TYPE_STROKED_RECT,
     GUI_DRAW_COMMAND_TYPE_TEXT,
+    GUI_DRAW_COMMAND_TYPE_IMAGE,
 } GUIDrawCommandType;
+
+typedef enum GUIImageFitMode
+{
+    GUI_IMAGE_FIT_MODE_STRETCH = 0,
+    GUI_IMAGE_FIT_MODE_CONTAIN,
+    GUI_IMAGE_FIT_MODE_COVER,
+} GUIImageFitMode;
 
 typedef struct GUIDrawCommandPushClipRect
 {
@@ -115,6 +123,14 @@ typedef struct GUIDrawCommandText
     f32 size;
 } GUIDrawCommandText;
 
+typedef struct GUIDrawCommandImage
+{
+    u64 image_id;
+    Rect2 rect;
+    Rect2 uv;
+    Vec4 tint;
+} GUIDrawCommandImage;
+
 typedef struct GUIDrawCommand
 {
     GUIDrawCommandType type;
@@ -125,6 +141,7 @@ typedef struct GUIDrawCommand
         GUIDrawCommandFilledRect filled_rect;
         GUIDrawCommandStrokedRect stroked_rect;
         GUIDrawCommandText text;
+        GUIDrawCommandImage image;
     } data;
 } GUIDrawCommand;
 
@@ -325,5 +342,7 @@ void GUI_PopClipRect (GUIContext *context);
 void GUI_DrawFilledRect (GUIContext *context, Rect2 rect, Vec4 color, GUICornerRadii corner_radii);
 void GUI_DrawStrokedRect (GUIContext *context, Rect2 rect, Vec4 color, GUIEdgeThickness thickness, GUICornerRadii corner_radii);
 void GUI_DrawText (GUIContext *context, Vec2 position, String text, Vec4 color, f32 size);
+void GUI_DrawImage (GUIContext *context, u64 image_id, Rect2 rect, Rect2 uv, Vec4 tint);
+void GUI_DrawImageFit (GUIContext *context, u64 image_id, Rect2 rect, Vec2 image_size, GUIImageFitMode fit_mode, Vec4 tint);
 
 #endif // GUI_CORE_H

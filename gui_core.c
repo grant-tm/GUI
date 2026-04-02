@@ -606,3 +606,89 @@ void GUI_DrawText (GUIContext *context, Vec2 position, String text, Vec4 color, 
     command->data.text.color = color;
     command->data.text.size = size;
 }
+
+void GUI_DrawImage (GUIContext *context, u64 image_id, Rect2 rect, Rect2 uv, Vec4 tint)
+{
+    GUIDrawCommand *command;
+
+    ASSERT(context != NULL);
+    ASSERT(image_id != 0);
+
+    command = GUI_PushDrawCommand(context, GUI_DRAW_COMMAND_TYPE_IMAGE);
+    ASSERT(command != NULL);
+    command->data.image.image_id = image_id;
+    command->data.image.rect = rect;
+    command->data.image.uv = uv;
+    command->data.image.tint = tint;
+}
+
+void GUI_DrawImageFit (GUIContext *context, u64 image_id, Rect2 rect, Vec2 image_size, GUIImageFitMode fit_mode, Vec4 tint)
+{
+    Rect2 draw_rect;
+    Rect2 uv_rect;
+    f32 rect_width;
+    f32 rect_height;
+    f32 image_aspect;
+    f32 rect_aspect;
+    f32 draw_width;
+    f32 draw_height;
+    f32 pad_x;
+    f32 pad_y;
+    f32 uv_trim_x;
+    f32 uv_trim_y;
+
+    ASSERT(context != NULL);
+    ASSERT(image_id != 0);
+
+    draw_rect = rect;
+    uv_rect = Rect2_Create(0.0f, 0.0f, 1.0f, 1.0f);
+    rect_width = rect.max.x - rect.min.x;
+    rect_height = rect.max.y - rect.min.y;
+
+    if ((image_size.x <= 0.0f) || (image_size.y <= 0.0f) ||
+        (rect_width <= 0.0f) || (rect_height <= 0.0f))
+    {
+        GUI_DrawImage(context, image_id, draw_rect, uv_rect, tint);
+        return;
+    }
+
+    image_aspect = image_size.x / image_size.y;
+    rect_aspect = rect_width / rect_height;
+
+    if (fit_mode == GUI_IMAGE_FIT_MODE_CONTAIN)
+    {
+        if (image_aspect > rect_aspect)
+        {
+            draw_width = rect_width;
+            draw_height = rect_width / image_aspect;
+        }
+        else
+        {
+            draw_height = rect_height;
+            draw_width = rect_height * image_aspect;
+        }
+
+        pad_x = (rect_width - draw_width) * 0.5f;
+        pad_y = (rect_height - draw_height) * 0.5f;
+        draw_rect = Rect2_Create(
+            rect.min.x + pad_x,
+            rect.min.y + pad_y,
+            rect.min.x + pad_x + draw_width,
+            rect.min.y + pad_y + draw_height);
+    }
+    else if (fit_mode == GUI_IMAGE_FIT_MODE_COVER)
+    {
+        if (image_aspect > rect_aspect)
+        {
+            uv_trim_x = (1.0f - (rect_aspect / image_aspect)) * 0.5f;
+            uv_rect = Rect2_Create(uv_trim_x, 0.0f, 1.0f - uv_trim_x, 1.0f);
+        }
+        else if (image_aspect < rect_aspect)
+        {
+            uv_trim_y = (1.0f - (image_aspect / rect_aspect)) * 0.5f;
+            uv_rect = Rect2_Create(0.0f, uv_trim_y, 1.0f, 1.0f - uv_trim_y);
+        }
+    }
+
+    GUI_DrawImage(context, image_id, draw_rect, uv_rect, tint);
+}
